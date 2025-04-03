@@ -160,6 +160,74 @@ def get_gdp_data(countries, start_year, end_year):
         print(f"Error reading GDP data from CSV: {e}")
         return None
 
+def get_inflation_data(countries, start_year, end_year):
+    """
+    Get inflation data for selected countries from CSV file with year range filter
+    
+    Parameters:
+    countries (list): List of country codes to filter
+    start_year (int): Start year for the data range
+    end_year (int): End year for the data range
+    
+    Returns:
+    pandas.DataFrame: Filtered GDP data for the selected countries and years
+    """
+    try:
+        # Read GDP data from CSV file
+        inflation_df = pd.read_csv('./data/inflation_data.csv', skiprows=4)
+        
+        # Map country codes to full names for filtering
+        country_mapping = {
+            'US': 'United States',
+            'UK': 'United Kingdom',
+            'China': 'China',
+            'Canada': 'Canada',
+            'Australia': 'Australia'
+        }
+        
+        # Convert selected country codes to full names
+        selected_countries = [country_mapping.get(country) for country in countries if country in country_mapping]
+        
+        # Filter data for selected countries
+        filtered_data = inflation_df[inflation_df['Country Name'].isin(selected_countries)]
+        
+        if filtered_data.empty:
+            return None
+            
+        # Select only the year columns within the specified range
+        year_columns = [str(year) for year in range(start_year, end_year + 1)]
+        available_year_columns = [col for col in year_columns if col in filtered_data.columns]
+        
+        if not available_year_columns:
+            return None
+            
+        # Select country name and year columns
+        result_df = filtered_data[['Country Name'] + available_year_columns].copy()
+        
+        # Melt the dataframe to convert years from columns to rows
+        melted_df = pd.melt(
+            result_df, 
+            id_vars=['Country Name'], 
+            value_vars=available_year_columns,
+            var_name='Year', 
+            value_name='Value'
+        )
+        
+        # Convert Year column to integer
+        melted_df['Year'] = melted_df['Year'].astype(int)
+        
+        # Rename Country Name to Country for consistency
+        melted_df = melted_df.rename(columns={'Country Name': 'Country'})
+        
+        # Pivot the data to have years as columns and countries as rows for easier plotting
+        pivot_df = melted_df.pivot(index='Country', columns='Year', values='Value').reset_index()
+        
+        return pivot_df
+        
+    except Exception as e:
+        print(f"Error reading inflation data from CSV: {e}")
+        return None
+
 def get_commodity_data(commodities, start_date, end_date):
     """
     Get price data for selected commodities
@@ -320,6 +388,73 @@ def plot_gdp_comparison(gdp_data, start_year, end_year):
         title="GDP Trends by Country",
         xaxis_title="Year",
         yaxis_title="GDP Value",
+        template="plotly_dark",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        paper_bgcolor="black",
+        plot_bgcolor="black",
+        font=dict(color="white"),
+        autosize=True
+    )
+    
+    # Enable autoscaling for both axes
+    fig.update_xaxes(autorange=True)
+    fig.update_yaxes(autorange=True)
+    
+    return fig
+
+
+def plot_inflation_comparison(inflation_data, start_year, end_year):
+    """
+    Plot inflation comparison as a step function across years
+    
+    Parameters:
+    inflation_data (pandas.DataFrame): DataFrame with inflation data
+    start_year (int): Start year for x-axis
+    end_year (int): End year for x-axis
+    
+    Returns:
+    plotly.graph_objects.Figure: The plotted figure
+    """
+    if inflation_data is None or inflation_data.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No Inflation Data Available",
+            template="plotly_dark",
+            paper_bgcolor="black",
+            plot_bgcolor="black",
+            font=dict(color="white"),
+            autosize=True
+        )
+        return fig
+    
+    fig = go.Figure()
+    
+    # Get all year columns (excluding the 'Country' column)
+    year_columns = [col for col in inflation_data.columns if col != 'Country']
+    
+    # Filter years based on the range
+    year_columns = [year for year in year_columns if start_year <= year <= end_year]
+    
+    # For each country, add a step line
+    for _, row in inflation_data.iterrows():
+        country = row['Country']
+        
+        # Extract values for the selected years
+        years = [year for year in year_columns]
+        values = [row[year] for year in year_columns]
+        
+        fig.add_trace(go.Scatter(
+            x=years,
+            y=values,
+            mode='lines+markers',
+            name=country,
+            line=dict(shape='hv')  # 'hv' creates horizontal first, then vertical line (step function)
+        ))
+    
+    fig.update_layout(
+        title="Inflation Trends by Country",
+        xaxis_title="Year",
+        yaxis_title="Inflation Rate",
         template="plotly_dark",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         paper_bgcolor="black",
@@ -551,6 +686,52 @@ def create_dashboard():
                     fn=update_gdp_comparison,
                     inputs=[gdp_country_selection, start_year_slider, end_year_slider],
                     outputs=gdp_plot
+                )
+
+            # Inflation Comparison Tab
+            with gr.TabItem("Inflation Comparison"):
+                with gr.Row():
+                    inflation_country_selection = gr.CheckboxGroup(
+                        label="Select Countries for Inflation Comparison",
+                        choices=["US", "China", "UK", "Canada", "Australia"],
+                        value=["US", "China", "UK"]
+                    )
+                
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        start_year_slider = gr.Slider(
+                            minimum=1968,
+                            maximum=2022,
+                            value=2000,
+                            step=1,
+                            label="Start Year"
+                        )
+                    with gr.Column(scale=1):
+                        end_year_slider = gr.Slider(
+                            minimum=1968,
+                            maximum=2022,
+                            value=2022,
+                            step=1,
+                            label="End Year"
+                        )
+                
+                with gr.Row():
+                    inflation_update_btn = gr.Button("Update Inflation Comparison")
+                
+                inflation_plot = gr.Plot(label="Inflation by Country Over Time")
+                
+                def update_inflation_comparison(countries, start_year, end_year):
+                    # Ensure start_year is not greater than end_year
+                    if start_year > end_year:
+                        start_year, end_year = end_year, start_year
+                    
+                    inflation_data = get_inflation_data(countries, start_year, end_year)
+                    return plot_inflation_comparison(inflation_data, start_year, end_year)
+                
+                inflation_update_btn.click(
+                    fn=update_inflation_comparison,
+                    inputs=[inflation_country_selection, start_year_slider, end_year_slider],
+                    outputs=inflation_plot
                 )
             
             # Commodities Tab
