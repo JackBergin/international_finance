@@ -553,6 +553,141 @@ def update_interest_rates(start_date_option, end_date_option, currencies_to_disp
     
     return plot_interest_rates(interest_data, currencies_to_display)
 
+def get_cpi_data(countries, start_date, end_date):
+    """
+    Retrieve Consumer Price Index (CPI) data from FRED for the specified countries.
+    
+    Parameters:
+    -----------
+    countries : list
+        List of country codes to filter
+    start_date : str or datetime-like
+        Start date for data retrieval, in YYYY-MM-DD format or a datetime object.
+    end_date : str or datetime-like
+        End date for data retrieval, in YYYY-MM-DD format or a datetime object.
+        
+    Returns:
+    --------
+    cpi_data : pd.DataFrame
+        DataFrame indexed by date, with one column per country representing the CPI time series.
+    """
+    # FRED series IDs for CPI data
+    cpi_series_ids = {
+        'US': 'CPIAUCSL',          # Consumer Price Index for All Urban Consumers: All Items in U.S. City Average
+        'UK': 'GBRCPIALLMINMEI',   # Consumer Price Index: All Items for United Kingdom
+        'China': 'CHNCPIALLMINMEI', # Consumer Price Index: All Items for China
+        'Canada': 'CANCPIALLMINMEI', # Consumer Price Index: All Items for Canada
+        'Australia': 'AUSCPIALLMINMEI' # Consumer Price Index: All Items for Australia
+    }
+    
+    # Initialize FRED client
+    fred = Fred(api_key=os.getenv('FRED_API_KEY'))
+    
+    # Map country codes to full names for filtering
+    country_mapping = {
+        'US': 'United States',
+        'UK': 'United Kingdom',
+        'China': 'China',
+        'Canada': 'Canada',
+        'Australia': 'Australia'
+    }
+    
+    cpi_data = pd.DataFrame()
+    
+    # Loop over each requested country
+    for country in countries:
+        series_id = cpi_series_ids.get(country)
+        if not series_id:
+            print(f"No FRED CPI series found for {country}, skipping.")
+            continue
+        
+        print(f"Downloading FRED CPI data for {country} (Series ID: {series_id})")
+        
+        try:
+            # Get CPI data from FRED
+            data_series = fred.get_series(series_id,
+                                         observation_start=start_date,
+                                         observation_end=end_date)
+            
+            if data_series is None or data_series.empty:
+                print(f"No CPI data returned for {country}")
+                continue
+            
+            # Add this series to the CPI data DataFrame
+            country_name = country_mapping.get(country, country)
+            cpi_data[country_name] = data_series
+            print(f"Successfully retrieved CPI data for {country}")
+            
+        except Exception as e:
+            print(f"Error retrieving CPI data for {country}: {e}")
+    
+    return cpi_data
+
+def plot_cpi_comparison(cpi_data):
+    """
+    Plot CPI comparison across countries
+    
+    Parameters:
+    cpi_data (pandas.DataFrame): DataFrame with CPI data
+    
+    Returns:
+    plotly.graph_objects.Figure: The plotted figure
+    """
+    if cpi_data is None or cpi_data.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No CPI Data Available",
+            template="plotly_dark",
+            paper_bgcolor="black",
+            plot_bgcolor="black",
+            font=dict(color="white"),
+            autosize=True
+        )
+        return fig
+    
+    fig = go.Figure()
+    
+    # Use different colors for each country for better visibility
+    colors = ['red', 'blue', 'green', 'purple', 'orange', 'cyan']
+    
+    for i, country in enumerate(cpi_data.columns):
+        # Get color index with wraparound if we have more countries than colors
+        color_idx = i % len(colors)
+        
+        # Make sure the data for this country is not all NaN
+        if cpi_data[country].notna().any():
+            # Create a copy without NaN values for this trace
+            plot_data = cpi_data[country].dropna()
+            
+            fig.add_trace(go.Scatter(
+                x=plot_data.index,
+                y=plot_data.values,
+                mode='lines',
+                name=f"{country} CPI",
+                line=dict(color=colors[color_idx], width=2)
+            ))
+            print(f"Added CPI trace for {country} with {len(plot_data)} points")
+        else:
+            print(f"No non-NaN CPI data for {country}, skipping")
+    
+    fig.update_layout(
+        title="Consumer Price Index by Country",
+        xaxis_title="Date",
+        yaxis_title="CPI Value",
+        template="plotly_dark",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        paper_bgcolor="black",
+        plot_bgcolor="black",
+        font=dict(color="white"),
+        autosize=True
+    )
+    
+    # Enable autoscaling for both axes
+    fig.update_xaxes(autorange=True)
+    fig.update_yaxes(autorange=True)
+    
+    return fig
+
 # Main Gradio interface
 def create_dashboard():
     with gr.Blocks(theme="dark") as dashboard:
@@ -775,6 +910,48 @@ def create_dashboard():
                     inputs=[commodity_start_date, commodity_end_date, commodity_selection],
                     outputs=commodity_plot
                 )
+            
+            # CPI Tab
+            with gr.TabItem("CPI Comparison"):
+                with gr.Row():
+                    cpi_country_selection = gr.CheckboxGroup(
+                        label="Select Countries for CPI Comparison",
+                        choices=["US", "China", "UK", "Canada", "Australia"],
+                        value=["US", "China", "UK"]
+                    )
+                
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        cpi_start_date = gr.Dropdown(
+                            label="Start Date",
+                            choices=["5 Years Ago", "10 Years Ago", "15 Years Ago", "20 Years Ago"],
+                            value="10 Years Ago"
+                        )
+                    
+                    with gr.Column(scale=1):
+                        cpi_end_date = gr.Dropdown(
+                            label="End Date",
+                            choices=["Today", "1 Year Ago", "5 Years Ago"],
+                            value="Today"
+                        )
+                
+                with gr.Row():
+                    cpi_update_btn = gr.Button("Update CPI Comparison")
+                
+                cpi_plot = gr.Plot(label="CPI by Country Over Time")
+                
+                def update_cpi_comparison(countries, start_date_option, end_date_option):
+                    start_date = convert_date_option(start_date_option)
+                    end_date = convert_date_option(end_date_option)
+                    
+                    cpi_data = get_cpi_data(countries, start_date, end_date)
+                    return plot_cpi_comparison(cpi_data)
+                
+                cpi_update_btn.click(
+                    fn=update_cpi_comparison,
+                    inputs=[cpi_country_selection, cpi_start_date, cpi_end_date],
+                    outputs=cpi_plot
+                )
         
         # Load initial data for each tab when dashboard starts
         dashboard.load(
@@ -788,11 +965,23 @@ def create_dashboard():
             inputs=[gdp_country_selection, start_year_slider, end_year_slider],
             outputs=gdp_plot
         )
+
+        dashboard.load(
+            fn=update_inflation_comparison,
+            inputs=[inflation_country_selection, start_year_slider, end_year_slider],
+            outputs=inflation_plot
+        )
         
         dashboard.load(
             fn=update_commodities,
             inputs=[commodity_start_date, commodity_end_date, commodity_selection],
             outputs=commodity_plot
+        )
+        
+        dashboard.load(
+            fn=update_cpi_comparison,
+            inputs=[cpi_country_selection, cpi_start_date, cpi_end_date],
+            outputs=cpi_plot
         )
     
     return dashboard
