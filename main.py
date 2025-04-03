@@ -12,75 +12,85 @@ from bs4 import BeautifulSoup
 import json
 import warnings
 import openpyxl
+from fredapi import Fred
+import os
+import dotenv
 
 warnings.filterwarnings('ignore')
+import pandas as pd
 
-# Helper functions for data retrieval
+dotenv.load_dotenv()
+
 def get_interest_rates(currencies, start_date, end_date):
     """
-    Get approximate interest rates for the selected currencies using updated and valid tickers
+    Retrieve 10-year government bond yields from FRED for the specified currencies.
+    The function returns a DataFrame of yields (percent) indexed by date.
     
     Parameters:
-    currencies (list): List of currencies to retrieve data for
-    start_date (str): Start date for data retrieval
-    end_date (str): End date for data retrieval
-    
+    -----------
+    currencies : list
+        List of currency codes or country identifiers (e.g., ['USD','EUR', ...]).
+    start_date : str or datetime-like
+        Start date for data retrieval, in YYYY-MM-DD format or a datetime object.
+    end_date : str or datetime-like
+        End date for data retrieval, in YYYY-MM-DD format or a datetime object.
+        
     Returns:
-    pandas.DataFrame: Interest rate data for the selected currencies
+    --------
+    interest_rates : pd.DataFrame
+        DataFrame indexed by date, with one column per currency (country) representing the yield time series.
     """
-    # Updated tickers for interest rate proxies
-    all_proxies = {
-        'USD': '^TNX',        # 10-Year Treasury Yield
-        'EUR': '^FTSE',       # Using FTSE as a proxy since EURIBOR not available
-        'GBP': '^FTMC',       # Using FTSE 250 as a proxy for UK
-        'CNY': '000001.SS',   # Shanghai Composite as a proxy for China
-        'AUD': '^AXJO',       # ASX 200 as a proxy for Australia
-        'CAD': '^GSPTSE',     # S&P/TSX Composite as a proxy for Canada
+    
+    # FRED series IDs for 10-year government bond yields.
+    # These IDs are subject to change/availability. Check FRED for the latest info.
+    all_proxies_fred = {
+        'USD': 'DGS10',               # 10-Year Treasury Constant Maturity (Percent)
+        'EUR': 'IRLTLT01EZM156N',     # 10-Year Govt Bond Yields: Euro Area
+        'GBP': 'IRLTLT01GBM156N',     # 10-Year Govt Bond Yields: United Kingdom
+        'CNY': 'IRLTLT01CNM156N',     # 10-Year Govt Bond Yields: China
+        'AUD': 'IRLTLT01AUM156N',     # 10-Year Govt Bond Yields: Australia
+        'CAD': 'IRLTLT01CAM156N',     # 10-Year Govt Bond Yields: Canada
     }
     
-    # If no currencies specified, use all of them
+    # Initialize FRED client. Replace with your own API key.
+    fred = Fred(api_key=os.getenv('FRED_API_KEY'))
+    
+    # If no currencies specified, use the entire list
     if not currencies:
-        currencies = list(all_proxies.keys())
-        
+        currencies = list(all_proxies_fred.keys())
+    
     interest_rates = pd.DataFrame()
     
-    # Get data only for the selected currencies
+    # Loop over each requested currency
     for currency in currencies:
-        if currency in all_proxies:
-            ticker = all_proxies[currency]
-            try:
-                print(f"Downloading data for {currency} using ticker {ticker}")
-                data = yf.download(ticker, start=start_date, end=end_date)
-                if not data.empty:
-                    interest_rates[currency] = data['Close']
-                    print(f"Successfully retrieved data for {currency}")
-                else:
-                    print(f"No data retrieved for {currency}")
-            except Exception as e:
-                print(f"Error getting data for {currency}: {e}")
-    
-    # If we have no data at all, try a fallback approach
-    if interest_rates.empty:
-        print("All downloads failed. Using fallback approach with random data for demonstration.")
-        # Generate random data for demonstration
-        date_range = pd.date_range(start=start_date, end=end_date)
-        interest_rates = pd.DataFrame(index=date_range)
-        for currency in all_proxies.keys():
-            # Generate random walk starting at a reasonable value
-            base_value = {
-                'USD': 3.5, 'EUR': 3.0, 'GBP': 4.0, 
-                'CNY': 2.5, 'AUD': 3.8, 'CAD': 3.2
-            }.get(currency, 3.0)
+        series_id = all_proxies_fred.get(currency)
+        if not series_id:
+            print(f"No FRED series found for {currency}, skipping.")
+            continue
+        
+        print(f"Downloading FRED data for {currency} (Series ID: {series_id})")
+        
+        try:
+            # fred.get_series returns a pandas Series with a DatetimeIndex by default
+            data_series = fred.get_series(series_id,
+                                          observation_start=start_date,
+                                          observation_end=end_date)
             
-            values = [base_value]
-            for _ in range(len(date_range) - 1):
-                change = np.random.normal(0, 0.05)  # Small random changes
-                new_value = max(0.1, values[-1] + change)  # Ensure rates don't go too low
-                values.append(new_value)
+            if data_series is None or data_series.empty:
+                print(f"No data returned for {currency}")
+                continue
             
-            interest_rates[currency] = values[:len(date_range)]
+            # Add this series to the interest_rates DataFrame
+            interest_rates[currency] = data_series
+            print(f"Successfully retrieved data for {currency}")
+        
+        except Exception as e:
+            print(f"Error retrieving data for {currency}: {e}")
     
+    # The resulting DataFrame is indexed by date, with columns = [currency codes]
+    # Each value is the daily (or monthly) yield for that date, depending on series frequency.
     return interest_rates
+    
 
 def get_gdp_data(countries, start_year, end_year):
     """
@@ -199,7 +209,13 @@ def plot_interest_rates(interest_data, currencies_to_display):
             autosize=True
         )
         return fig
-        
+    
+    # Debug information
+    print(f"Interest data columns: {interest_data.columns.tolist()}")
+    print(f"Currencies to display: {currencies_to_display}")
+    print(f"Interest data shape: {interest_data.shape}")
+    print(f"Interest data sample:\n{interest_data.head()}")
+    
     fig = go.Figure()
     
     # Filter to include only the currencies we have data for
@@ -209,13 +225,30 @@ def plot_interest_rates(interest_data, currencies_to_display):
     if not available_currencies and not interest_data.empty:
         available_currencies = interest_data.columns.tolist()
     
-    for currency in available_currencies:
-        fig.add_trace(go.Scatter(
-            x=interest_data.index,
-            y=interest_data[currency],
-            mode='lines',
-            name=f"{currency} Interest Rate"
-        ))
+    print(f"Available currencies for plotting: {available_currencies}")
+    
+    # Use different colors for each currency for better visibility
+    colors = ['red', 'blue', 'green', 'purple', 'orange', 'cyan']
+    
+    for i, currency in enumerate(available_currencies):
+        # Get color index with wraparound if we have more currencies than colors
+        color_idx = i % len(colors)
+        
+        # Make sure the data for this currency is not all NaN
+        if interest_data[currency].notna().any():
+            # Create a copy without NaN values for this trace
+            plot_data = interest_data[currency].dropna()
+            
+            fig.add_trace(go.Scatter(
+                x=plot_data.index,
+                y=plot_data.values,
+                mode='lines',
+                name=f"{currency} Interest Rate",
+                line=dict(color=colors[color_idx], width=2)
+            ))
+            print(f"Added trace for {currency} with {len(plot_data)} points")
+        else:
+            print(f"No non-NaN data for {currency}, skipping")
     
     fig.update_layout(
         title="Interest Rates by Currency",
@@ -365,9 +398,25 @@ def convert_date_option(date_option):
         "3 Months Ago": (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d'),
         "6 Months Ago": (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d'),
         "1 Year Ago": (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
-        "3 Years Ago": (datetime.now() - timedelta(days=3*365)).strftime('%Y-%m-%d')
+        "5 Years Ago": (datetime.now() - timedelta(days=5*365)).strftime('%Y-%m-%d'),
+        "10 Years Ago": (datetime.now() - timedelta(days=10*365)).strftime('%Y-%m-%d'),
+        "15 Years Ago": (datetime.now() - timedelta(days=15*365)).strftime('%Y-%m-%d'),
+        "20 Years Ago": (datetime.now() - timedelta(days=20*365)).strftime('%Y-%m-%d')
     }
     return date_options[date_option]
+
+def update_interest_rates(start_date_option, end_date_option, currencies_to_display):
+    start_date = convert_date_option(start_date_option)
+    end_date = convert_date_option(end_date_option)
+    
+    print(f"Retrieving interest rates from {start_date} to {end_date} for {currencies_to_display}")
+    
+    # Get data only for the selected currencies
+    interest_data = get_interest_rates(currencies_to_display, start_date, end_date)
+    
+    print(f"Retrieved interest rate data with shape: {interest_data.shape if interest_data is not None else 'None'}")
+    
+    return plot_interest_rates(interest_data, currencies_to_display)
 
 # Main Gradio interface
 def create_dashboard():
@@ -429,14 +478,14 @@ def create_dashboard():
                     with gr.Column(scale=1):
                         interest_start_date = gr.Dropdown(
                             label="Start Date",
-                            choices=["1 Week Ago", "1 Month Ago", "3 Months Ago", "6 Months Ago", "1 Year Ago", "3 Years Ago"],
-                            value="1 Month Ago"
+                            choices=["5 Years Ago", "10 Years Ago", "15 Years Ago", "20 Years Ago"],
+                            value="10 Years Ago"
                         )
                     
                     with gr.Column(scale=1):
                         interest_end_date = gr.Dropdown(
                             label="End Date",
-                            choices=["Today", "Yesterday", "1 Week Ago"],
+                            choices=["Today", "1 Year Ago", "5 Years Ago", "10 Years Ago", "15 Years Ago", "20 Years Ago"],
                             value="Today"
                         )
                 
@@ -451,14 +500,6 @@ def create_dashboard():
                     interest_update_btn = gr.Button("Update Interest Rates")
                 
                 interest_plot = gr.Plot(label="Interest Rates")
-                
-                def update_interest_rates(start_date_option, end_date_option, currencies_to_display):
-                    start_date = convert_date_option(start_date_option)
-                    end_date = convert_date_option(end_date_option)
-                    
-                    # Get data only for the selected currencies
-                    interest_data = get_interest_rates(currencies_to_display, start_date, end_date)
-                    return plot_interest_rates(interest_data, currencies_to_display)
                 
                 interest_update_btn.click(
                     fn=update_interest_rates,
