@@ -22,11 +22,11 @@ def get_interest_rates(currencies, start_date, end_date):
     # Mapping of currencies to their interest rate proxies (bonds or rates)
     proxies = {
         'USD': '^TNX',  # 10-Year Treasury Yield
-        'EUR': '^IRX',  # 13-week Treasury Bill (using as EUR proxy)
-        'GBP': '^FVX',  # 5-Year Treasury Note Yield (using as GBP proxy)
-        'CNY': '^TYX',  # 30-Year Treasury Bond Yield (using as CNY proxy)
-        'AUD': '^TNX',  # 10-Year Treasury Yield (using as AUD proxy)
-        'CAD': '^IRX',  # 13-week Treasury Bill (using as CAD proxy)
+        'EUR': 'EURIBOR3M.SW',  # Euro Interbank Offered Rate
+        'GBP': 'GB10Y.L',  # UK 10Y Gilt
+        'CNY': 'CHIBON.SS',  # China 1Y bond
+        'AUD': 'GSBG10.AX',  # Australia 10Y Bond
+        'CAD': 'CA10YT.TO',  # Canada 10Y Bond
     }
     
     interest_rates = pd.DataFrame()
@@ -36,36 +36,9 @@ def get_interest_rates(currencies, start_date, end_date):
             try:
                 data = yf.download(proxies[currency], start=start_date, end=end_date)
                 if not data.empty:
-                    # For non-USD currencies, add some variation to make them look different
-                    base_rate = data['Close']
-                    if currency == 'EUR':
-                        interest_rates[currency] = base_rate * 0.8  # Lower than USD
-                    elif currency == 'GBP':
-                        interest_rates[currency] = base_rate * 1.2  # Higher than USD
-                    elif currency == 'CNY':
-                        interest_rates[currency] = base_rate * 0.9  # Slightly lower than USD
-                    elif currency == 'AUD':
-                        interest_rates[currency] = base_rate * 1.3  # Higher than USD
-                    elif currency == 'CAD':
-                        interest_rates[currency] = base_rate * 1.1  # Slightly higher than USD
-                    else:
-                        interest_rates[currency] = base_rate
-                    
-                    print(f"Successfully retrieved data for {currency}")
-                else:
-                    print(f"No data found for {currency}")
+                    interest_rates[currency] = data['Close']
             except Exception as e:
                 print(f"Error getting data for {currency}: {e}")
-    
-    # If the dataframe is empty, create some sample data to avoid errors
-    if interest_rates.empty and currencies:
-        print("Creating sample data as no real data was retrieved")
-        dates = pd.date_range(start=start_date, end=end_date)
-        sample_data = {}
-        for currency in currencies:
-            # Create random data as placeholder with realistic interest rate values (0.5% to 5%)
-            sample_data[currency] = np.random.uniform(0.5, 5, size=len(dates))
-        interest_rates = pd.DataFrame(sample_data, index=dates)
     
     return interest_rates
 
@@ -74,47 +47,47 @@ def get_gdp_data(countries, end_date):
     Get GDP data for selected countries
     Using latest annual data (simplified)
     """
-    # Simplified GDP data in trillions USD (latest approximate values)
-    gdp_data = {
-        'US': 26.95,
-        'China': 17.86,
+    # Simplified mock GDP data
+    gdp_mock = {
+        'US': 25.46,
+        'China': 17.96,
         'UK': 3.07,
         'Canada': 2.14,
-        'Australia': 1.68
+        'Australia': 1.75
     }
     
-    data = pd.DataFrame({
-        'Country': list(gdp_data.keys()),
-        'GDP (Trillion USD)': list(gdp_data.values())
+    selected_data = {country: gdp_mock.get(country, 0) for country in countries if country in gdp_mock}
+    
+    if not selected_data:
+        return None
+        
+    df = pd.DataFrame({
+        'Country': list(selected_data.keys()),
+        'GDP (Trillion USD)': list(selected_data.values())
     })
     
-    # Filter to include only requested countries
-    data = data[data['Country'].isin(countries)]
-    
-    return data
+    return df
 
-def get_inflation_cpi_data(countries, start_date, end_date):
+def get_inflation_data(countries, start_date, end_date):
     """
-    Get inflation and CPI data for selected countries.
-    Using proxies or simplified data as real-time official statistics require specialized APIs.
+    Get inflation proxy data for selected countries
     """
-    # Using ETFs or proxies that track inflation expectations
-    inflation_proxies = {
-        'US': 'TIP',  # US TIPS ETF
-        'UK': 'GILTI.L',  # UK Inflation-Linked Gilt
-        'China': '511360.SS',  # China Inflation ETF
-        'Canada': 'REAL.TO',  # Canadian Real Return Bond
-        'Australia': 'GSII.AX'  # Australian Inflation Indexed Bond
+    # Mapping of countries to inflation proxies (ETFs or indices)
+    proxies = {
+        'US': 'RINF',  # ProShares Inflation Expectations ETF
+        'UK': 'UKRPI.L',  # UK Retail Price Index
+        'China': '000922.SS',  # China CSI 300 Non-Ferrous Metal Index
+        'Canada': 'CACPI.TO',  # Canada CPI Index
+        'Australia': 'AUDUSD=X'  # Using currency as a very rough proxy
     }
     
     inflation_data = pd.DataFrame()
     
     for country in countries:
-        if country in inflation_proxies:
+        if country in proxies:
             try:
-                data = yf.download(inflation_proxies[country], start=start_date, end=end_date)
+                data = yf.download(proxies[country], start=start_date, end=end_date)
                 if not data.empty:
-                    # Using price changes of inflation-linked securities as a proxy for inflation
                     inflation_data[f"{country} Inflation Proxy"] = data['Close']
             except Exception as e:
                 print(f"Error getting inflation data for {country}: {e}")
@@ -150,6 +123,14 @@ def get_commodity_data(commodities, start_date, end_date):
 # Plotting functions
 def plot_interest_rates(interest_data, dark_mode=False):
     """Plot interest rates for selected currencies"""
+    if interest_data is None or interest_data.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No Interest Rate Data Available",
+            template="plotly_dark" if dark_mode else "plotly_white"
+        )
+        return fig
+        
     fig = go.Figure()
     
     for currency in interest_data.columns:
@@ -172,6 +153,14 @@ def plot_interest_rates(interest_data, dark_mode=False):
 
 def plot_gdp_comparison(gdp_data, dark_mode=False):
     """Plot GDP comparison as a bar chart"""
+    if gdp_data is None or gdp_data.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No GDP Data Available",
+            template="plotly_dark" if dark_mode else "plotly_white"
+        )
+        return fig
+        
     fig = px.bar(
         gdp_data,
         x='Country',
@@ -190,6 +179,14 @@ def plot_gdp_comparison(gdp_data, dark_mode=False):
 
 def plot_inflation_cpi(inflation_data, dark_mode=False):
     """Plot inflation and CPI trends"""
+    if inflation_data is None or inflation_data.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No Inflation Data Available",
+            template="plotly_dark" if dark_mode else "plotly_white"
+        )
+        return fig
+        
     fig = go.Figure()
     
     for column in inflation_data.columns:
@@ -212,6 +209,14 @@ def plot_inflation_cpi(inflation_data, dark_mode=False):
 
 def plot_commodities(commodity_data, dark_mode=False):
     """Plot commodity prices"""
+    if commodity_data is None or commodity_data.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No Commodity Data Available",
+            template="plotly_dark" if dark_mode else "plotly_white"
+        )
+        return fig
+        
     # Create subplots: one for each commodity to better visualize different scales
     fig = make_subplots(
         rows=len(commodity_data.columns), 
@@ -243,117 +248,217 @@ def plot_commodities(commodity_data, dark_mode=False):
     
     return fig
 
+# Helper function to convert date options to actual dates
+def convert_date_option(date_option):
+    date_options = {
+        "Today": datetime.now().strftime('%Y-%m-%d'),
+        "Yesterday": (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'),
+        "1 Week Ago": (datetime.now() - timedelta(weeks=1)).strftime('%Y-%m-%d'),
+        "1 Month Ago": (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
+        "3 Months Ago": (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d'),
+        "6 Months Ago": (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d'),
+        "1 Year Ago": (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
+        "3 Years Ago": (datetime.now() - timedelta(days=3*365)).strftime('%Y-%m-%d')
+    }
+    return date_options[date_option]
+
 # Main Gradio interface
 def create_dashboard():
     with gr.Blocks(theme=gr.themes.Default()) as dashboard:
         gr.Markdown("# Financial Markets Dashboard")
         
+        # Global theme toggle
         with gr.Row():
-            with gr.Column(scale=1):
-                start_date = gr.Dropdown(
-                    label="Start Date",
-                    choices=[
-                        "1 Week Ago", "1 Month Ago", "3 Months Ago",
-                        "6 Months Ago", "1 Year Ago", "3 Years Ago"
-                    ],
-                    value="1 Month Ago"
-                )
-            
-            with gr.Column(scale=1):
-                end_date = gr.Dropdown(
-                    label="End Date",
-                    choices=["Today", "Yesterday", "1 Week Ago"],
-                    value="Today"
-                )
+            theme_toggle = gr.Checkbox(label="Dark Mode", value=False)
+        
+        # Create tabs for different visualizations
+        with gr.Tabs() as tabs:
+            # Interest Rates Tab
+            with gr.TabItem("Interest Rates"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        interest_start_date = gr.Dropdown(
+                            label="Start Date",
+                            choices=["1 Week Ago", "1 Month Ago", "3 Months Ago", "6 Months Ago", "1 Year Ago", "3 Years Ago"],
+                            value="1 Month Ago"
+                        )
+                    
+                    with gr.Column(scale=1):
+                        interest_end_date = gr.Dropdown(
+                            label="End Date",
+                            choices=["Today", "Yesterday", "1 Week Ago"],
+                            value="Today"
+                        )
                 
-            with gr.Column(scale=1):
-                theme_toggle = gr.Checkbox(label="Dark Mode", value=False)
+                with gr.Row():
+                    interest_currency_selection = gr.CheckboxGroup(
+                        label="Select Currencies for Interest Rates",
+                        choices=["USD", "EUR", "GBP", "CNY", "AUD", "CAD"],
+                        value=["USD", "EUR", "GBP"]
+                    )
+                
+                with gr.Row():
+                    interest_update_btn = gr.Button("Update Interest Rates")
+                
+                interest_plot = gr.Plot(label="Interest Rates")
+                
+                def update_interest_rates(start_date_option, end_date_option, currencies, dark_mode):
+                    start_date = convert_date_option(start_date_option)
+                    end_date = convert_date_option(end_date_option)
+                    
+                    interest_data = get_interest_rates(currencies, start_date, end_date)
+                    return plot_interest_rates(interest_data, dark_mode)
+                
+                interest_update_btn.click(
+                    fn=update_interest_rates,
+                    inputs=[interest_start_date, interest_end_date, interest_currency_selection, theme_toggle],
+                    outputs=interest_plot
+                )
+            
+            # GDP Comparison Tab
+            with gr.TabItem("GDP Comparison"):
+                with gr.Row():
+                    gdp_country_selection = gr.CheckboxGroup(
+                        label="Select Countries for GDP Comparison",
+                        choices=["US", "China", "UK", "Canada", "Australia"],
+                        value=["US", "China", "UK"]
+                    )
+                
+                with gr.Row():
+                    gdp_update_btn = gr.Button("Update GDP Comparison")
+                
+                gdp_plot = gr.Plot(label="GDP by Country")
+                
+                def update_gdp_comparison(countries, dark_mode):
+                    gdp_data = get_gdp_data(countries, datetime.now().strftime('%Y-%m-%d'))
+                    return plot_gdp_comparison(gdp_data, dark_mode)
+                
+                gdp_update_btn.click(
+                    fn=update_gdp_comparison,
+                    inputs=[gdp_country_selection, theme_toggle],
+                    outputs=gdp_plot
+                )
+            
+            # Inflation Indicators Tab
+            with gr.TabItem("Inflation Indicators"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        inflation_start_date = gr.Dropdown(
+                            label="Start Date",
+                            choices=["1 Month Ago", "3 Months Ago", "6 Months Ago", "1 Year Ago", "3 Years Ago"],
+                            value="6 Months Ago"
+                        )
+                    
+                    with gr.Column(scale=1):
+                        inflation_end_date = gr.Dropdown(
+                            label="End Date",
+                            choices=["Today", "Yesterday", "1 Week Ago"],
+                            value="Today"
+                        )
+                
+                with gr.Row():
+                    inflation_country_selection = gr.CheckboxGroup(
+                        label="Select Countries for Inflation Indicators",
+                        choices=["US", "China", "UK", "Canada", "Australia"],
+                        value=["US", "UK"]
+                    )
+                
+                with gr.Row():
+                    inflation_update_btn = gr.Button("Update Inflation Indicators")
+                
+                inflation_plot = gr.Plot(label="Inflation Indicators")
+                
+                def update_inflation_indicators(start_date_option, end_date_option, countries, dark_mode):
+                    start_date = convert_date_option(start_date_option)
+                    end_date = convert_date_option(end_date_option)
+                    
+                    inflation_data = get_inflation_data(countries, start_date, end_date)
+                    return plot_inflation_cpi(inflation_data, dark_mode)
+                
+                inflation_update_btn.click(
+                    fn=update_inflation_indicators,
+                    inputs=[inflation_start_date, inflation_end_date, inflation_country_selection, theme_toggle],
+                    outputs=inflation_plot
+                )
+            
+            # Commodities Tab
+            with gr.TabItem("Commodities"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        commodity_start_date = gr.Dropdown(
+                            label="Start Date",
+                            choices=["1 Week Ago", "1 Month Ago", "3 Months Ago", "6 Months Ago", "1 Year Ago"],
+                            value="3 Months Ago"
+                        )
+                    
+                    with gr.Column(scale=1):
+                        commodity_end_date = gr.Dropdown(
+                            label="End Date",
+                            choices=["Today", "Yesterday", "1 Week Ago"],
+                            value="Today"
+                        )
+                
+                with gr.Row():
+                    commodity_selection = gr.CheckboxGroup(
+                        label="Select Commodities",
+                        choices=["Oil", "Gold", "Silver", "BTC", "ETH"],
+                        value=["Oil", "Gold", "BTC"]
+                    )
+                
+                with gr.Row():
+                    commodity_update_btn = gr.Button("Update Commodities")
+                
+                commodity_plot = gr.Plot(label="Commodity Prices")
+                
+                def update_commodities(start_date_option, end_date_option, commodities, dark_mode):
+                    start_date = convert_date_option(start_date_option)
+                    end_date = convert_date_option(end_date_option)
+                    
+                    commodity_data = get_commodity_data(commodities, start_date, end_date)
+                    return plot_commodities(commodity_data, dark_mode)
+                
+                commodity_update_btn.click(
+                    fn=update_commodities,
+                    inputs=[commodity_start_date, commodity_end_date, commodity_selection, theme_toggle],
+                    outputs=commodity_plot
+                )
         
-        # Currency selection for interest rates
-        with gr.Row():
-            currency_selection = gr.CheckboxGroup(
-                label="Select Currencies for Interest Rates",
-                choices=["USD", "EUR", "GBP", "CNY", "AUD", "CAD"],
-                value=["USD", "EUR", "GBP"]
+        # Update theme for all plots when dark mode is toggled
+        def update_all_plots_theme(dark_mode):
+            # Trigger all update functions with current values
+            interest_fig = update_interest_rates(
+                interest_start_date.value, 
+                interest_end_date.value, 
+                interest_currency_selection.value, 
+                dark_mode
             )
-        
-        # Country selection for GDP, Inflation, CPI
-        with gr.Row():
-            country_selection = gr.CheckboxGroup(
-                label="Select Countries for Macroeconomic Indicators",
-                choices=["US", "China", "UK", "Canada", "Australia"],
-                value=["US", "China", "UK"]
+            
+            gdp_fig = update_gdp_comparison(
+                gdp_country_selection.value, 
+                dark_mode
             )
             
-        # Commodity selection
-        with gr.Row():
-            commodity_selection = gr.CheckboxGroup(
-                label="Select Commodities",
-                choices=["Oil", "Gold", "Silver", "BTC", "ETH"],
-                value=["Oil", "Gold", "BTC"]
+            inflation_fig = update_inflation_indicators(
+                inflation_start_date.value, 
+                inflation_end_date.value, 
+                inflation_country_selection.value, 
+                dark_mode
             )
             
-        # Create output panels for each graph
-        with gr.Tab("Interest Rates"):
-            interest_plot = gr.Plot(label="Interest Rates")
-        
-        with gr.Tab("GDP Comparison"):
-            gdp_plot = gr.Plot(label="GDP by Country")
-            
-        with gr.Tab("Inflation Indicators"):
-            inflation_plot = gr.Plot(label="Inflation Indicators")
-            
-        with gr.Tab("Commodities"):
-            commodity_plot = gr.Plot(label="Commodity Prices")
-            
-        # Update button
-        update_btn = gr.Button("Update Dashboard")
-        
-        # Function to update all plots
-        def update_dashboard(start_date_option, end_date_option, currencies, countries, commodities, dark_mode):
-            # Convert date options to actual dates
-            date_options = {
-                "Today": datetime.now().strftime('%Y-%m-%d'),
-                "Yesterday": (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'),
-                "1 Week Ago": (datetime.now() - timedelta(weeks=1)).strftime('%Y-%m-%d'),
-                "1 Month Ago": (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
-                "3 Months Ago": (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d'),
-                "6 Months Ago": (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d'),
-                "1 Year Ago": (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
-                "3 Years Ago": (datetime.now() - timedelta(days=3*365)).strftime('%Y-%m-%d')
-            }
-            
-            start_date = date_options[start_date_option]
-            end_date = date_options[end_date_option]
-            
-            # Get data
-            interest_data = get_interest_rates(currencies, start_date, end_date)
-            gdp_data = get_gdp_data(countries, end_date)
-            inflation_data = get_inflation_cpi_data(countries, start_date, end_date)
-            commodity_data = get_commodity_data(commodities, start_date, end_date)
-            
-            # Create plots
-            interest_fig = plot_interest_rates(interest_data, dark_mode)
-            gdp_fig = plot_gdp_comparison(gdp_data, dark_mode)
-            inflation_fig = plot_inflation_cpi(inflation_data, dark_mode)
-            commodity_fig = plot_commodities(commodity_data, dark_mode)
+            commodity_fig = update_commodities(
+                commodity_start_date.value, 
+                commodity_end_date.value, 
+                commodity_selection.value, 
+                dark_mode
+            )
             
             return interest_fig, gdp_fig, inflation_fig, commodity_fig
-            
-        # Connect the button to update function
-        update_btn.click(
-            fn=update_dashboard,
-            inputs=[start_date, end_date, currency_selection, country_selection, commodity_selection, theme_toggle],
+        
+        theme_toggle.change(
+            fn=update_all_plots_theme,
+            inputs=[theme_toggle],
             outputs=[interest_plot, gdp_plot, inflation_plot, commodity_plot]
         )
-        
-        # Also update when any setting is changed
-        for input_component in [start_date, end_date, currency_selection, country_selection, commodity_selection, theme_toggle]:
-            input_component.change(
-                fn=update_dashboard,
-                inputs=[start_date, end_date, currency_selection, country_selection, commodity_selection, theme_toggle],
-                outputs=[interest_plot, gdp_plot, inflation_plot, commodity_plot]
-            )
     
     return dashboard
 
