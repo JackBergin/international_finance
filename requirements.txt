@@ -3,3 +3,4 @@ yfinance
 plotly
 matplotlib
 python-dotenv
+openpyxl

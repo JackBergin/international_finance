@@ -11,6 +11,8 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import warnings
+import openpyxl
+
 warnings.filterwarnings('ignore')
 
 # Helper functions for data retrieval
@@ -42,31 +44,73 @@ def get_interest_rates(currencies, start_date, end_date):
     
     return interest_rates
 
-def get_gdp_data(countries, end_date):
+def get_gdp_data(countries, start_year, end_year):
     """
-    Get GDP data for selected countries
-    Using latest annual data (simplified)
+    Get GDP data for selected countries from CSV file with year range filter
+    
+    Parameters:
+    countries (list): List of country codes to filter
+    start_year (int): Start year for the data range
+    end_year (int): End year for the data range
+    
+    Returns:
+    pandas.DataFrame: Filtered GDP data for the selected countries and years
     """
-    # Simplified mock GDP data
-    gdp_mock = {
-        'US': 25.46,
-        'China': 17.96,
-        'UK': 3.07,
-        'Canada': 2.14,
-        'Australia': 1.75
-    }
-    
-    selected_data = {country: gdp_mock.get(country, 0) for country in countries if country in gdp_mock}
-    
-    if not selected_data:
-        return None
+    try:
+        # Read GDP data from CSV file
+        gdp_df = pd.read_csv('./data/gdp_data.csv', skiprows=4)
         
-    df = pd.DataFrame({
-        'Country': list(selected_data.keys()),
-        'GDP (Trillion USD)': list(selected_data.values())
-    })
-    
-    return df
+        # Map country codes to full names for filtering
+        country_mapping = {
+            'US': 'United States',
+            'UK': 'United Kingdom',
+            'China': 'China',
+            'Canada': 'Canada',
+            'Australia': 'Australia'
+        }
+        
+        # Convert selected country codes to full names
+        selected_countries = [country_mapping.get(country) for country in countries if country in country_mapping]
+        
+        # Filter data for selected countries
+        filtered_data = gdp_df[gdp_df['Country Name'].isin(selected_countries)]
+        
+        if filtered_data.empty:
+            return None
+            
+        # Select only the year columns within the specified range
+        year_columns = [str(year) for year in range(start_year, end_year + 1)]
+        available_year_columns = [col for col in year_columns if col in filtered_data.columns]
+        
+        if not available_year_columns:
+            return None
+            
+        # Select country name and year columns
+        result_df = filtered_data[['Country Name'] + available_year_columns].copy()
+        
+        # Melt the dataframe to convert years from columns to rows
+        melted_df = pd.melt(
+            result_df, 
+            id_vars=['Country Name'], 
+            value_vars=available_year_columns,
+            var_name='Year', 
+            value_name='Value'
+        )
+        
+        # Convert Year column to integer
+        melted_df['Year'] = melted_df['Year'].astype(int)
+        
+        # Rename Country Name to Country for consistency
+        melted_df = melted_df.rename(columns={'Country Name': 'Country'})
+        
+        # Pivot the data to have years as columns and countries as rows for easier plotting
+        pivot_df = melted_df.pivot(index='Country', columns='Year', values='Value').reset_index()
+        
+        return pivot_df
+        
+    except Exception as e:
+        print(f"Error reading GDP data from CSV: {e}")
+        return None
 
 def get_inflation_data(countries, start_date, end_date):
     """
@@ -151,8 +195,19 @@ def plot_interest_rates(interest_data, dark_mode=False):
     
     return fig
 
-def plot_gdp_comparison(gdp_data, dark_mode=False):
-    """Plot GDP comparison as a bar chart"""
+def plot_gdp_comparison(gdp_data, start_year, end_year, dark_mode=False):
+    """
+    Plot GDP comparison as a step function across years
+    
+    Parameters:
+    gdp_data (pandas.DataFrame): DataFrame with GDP data
+    start_year (int): Start year for x-axis
+    end_year (int): End year for x-axis
+    dark_mode (bool): Whether to use dark mode for the plot
+    
+    Returns:
+    plotly.graph_objects.Figure: The plotted figure
+    """
     if gdp_data is None or gdp_data.empty:
         fig = go.Figure()
         fig.update_layout(
@@ -160,19 +215,37 @@ def plot_gdp_comparison(gdp_data, dark_mode=False):
             template="plotly_dark" if dark_mode else "plotly_white"
         )
         return fig
+    
+    fig = go.Figure()
+    
+    # Get all year columns (excluding the 'Country' column)
+    year_columns = [col for col in gdp_data.columns if col != 'Country']
+    
+    # Filter years based on the range
+    year_columns = [year for year in year_columns if start_year <= year <= end_year]
+    
+    # For each country, add a step line
+    for _, row in gdp_data.iterrows():
+        country = row['Country']
         
-    fig = px.bar(
-        gdp_data,
-        x='Country',
-        y='GDP (Trillion USD)',
-        color='Country',
-        title="GDP Comparison by Country"
-    )
+        # Extract values for the selected years
+        years = [year for year in year_columns]
+        values = [row[year] for year in year_columns]
+        
+        fig.add_trace(go.Scatter(
+            x=years,
+            y=values,
+            mode='lines+markers',
+            name=country,
+            line=dict(shape='hv')  # 'hv' creates horizontal first, then vertical line (step function)
+        ))
     
     fig.update_layout(
+        title="GDP Trends by Country",
+        xaxis_title="Year",
+        yaxis_title="GDP Value",
         template="plotly_dark" if dark_mode else "plotly_white",
-        xaxis_title="Country",
-        yaxis_title="GDP (Trillion USD)"
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
     return fig
@@ -315,7 +388,7 @@ def create_dashboard():
                     outputs=interest_plot
                 )
             
-            # GDP Comparison Tab
+            # GDP Comparison Tab - MODIFIED
             with gr.TabItem("GDP Comparison"):
                 with gr.Row():
                     gdp_country_selection = gr.CheckboxGroup(
@@ -325,17 +398,39 @@ def create_dashboard():
                     )
                 
                 with gr.Row():
+                    with gr.Column(scale=1):
+                        start_year_slider = gr.Slider(
+                            minimum=1968,
+                            maximum=2022,
+                            value=2000,
+                            step=1,
+                            label="Start Year"
+                        )
+                    with gr.Column(scale=1):
+                        end_year_slider = gr.Slider(
+                            minimum=1968,
+                            maximum=2022,
+                            value=2022,
+                            step=1,
+                            label="End Year"
+                        )
+                
+                with gr.Row():
                     gdp_update_btn = gr.Button("Update GDP Comparison")
                 
-                gdp_plot = gr.Plot(label="GDP by Country")
+                gdp_plot = gr.Plot(label="GDP by Country Over Time")
                 
-                def update_gdp_comparison(countries, dark_mode):
-                    gdp_data = get_gdp_data(countries, datetime.now().strftime('%Y-%m-%d'))
-                    return plot_gdp_comparison(gdp_data, dark_mode)
+                def update_gdp_comparison(countries, start_year, end_year, dark_mode):
+                    # Ensure start_year is not greater than end_year
+                    if start_year > end_year:
+                        start_year, end_year = end_year, start_year
+                    
+                    gdp_data = get_gdp_data(countries, start_year, end_year)
+                    return plot_gdp_comparison(gdp_data, start_year, end_year, dark_mode)
                 
                 gdp_update_btn.click(
                     fn=update_gdp_comparison,
-                    inputs=[gdp_country_selection, theme_toggle],
+                    inputs=[gdp_country_selection, start_year_slider, end_year_slider, theme_toggle],
                     outputs=gdp_plot
                 )
             
@@ -435,6 +530,8 @@ def create_dashboard():
             
             gdp_fig = update_gdp_comparison(
                 gdp_country_selection.value, 
+                start_year_slider.value,
+                end_year_slider.value,
                 dark_mode
             )
             
