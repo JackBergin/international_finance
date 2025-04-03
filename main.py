@@ -421,7 +421,7 @@ def update_interest_rates(start_date_option, end_date_option, currencies_to_disp
 # Main Gradio interface
 def create_dashboard():
     with gr.Blocks(theme="dark") as dashboard:
-        gr.Markdown("# Financial Markets Dashboard", elem_id="dashboard-title")
+        gr.Markdown("# International Finance Dashboard", elem_id="dashboard-title")
         
         # Add custom CSS for complete black background
         gr.HTML("""
