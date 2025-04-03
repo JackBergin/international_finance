@@ -192,7 +192,11 @@ def plot_interest_rates(interest_data, currencies_to_display):
         fig = go.Figure()
         fig.update_layout(
             title="No Interest Rate Data Available",
-            template="plotly_dark"
+            template="plotly_dark",
+            paper_bgcolor="black",
+            plot_bgcolor="black",
+            font=dict(color="white"),
+            autosize=True
         )
         return fig
         
@@ -218,8 +222,16 @@ def plot_interest_rates(interest_data, currencies_to_display):
         xaxis_title="Date",
         yaxis_title="Rate (%)",
         template="plotly_dark",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        paper_bgcolor="black",
+        plot_bgcolor="black",
+        font=dict(color="white"),
+        autosize=True
     )
+    
+    # Enable autoscaling for both axes
+    fig.update_xaxes(autorange=True)
+    fig.update_yaxes(autorange=True)
     
     return fig
 
@@ -239,7 +251,11 @@ def plot_gdp_comparison(gdp_data, start_year, end_year):
         fig = go.Figure()
         fig.update_layout(
             title="No GDP Data Available",
-            template="plotly_dark"
+            template="plotly_dark",
+            paper_bgcolor="black",
+            plot_bgcolor="black",
+            font=dict(color="white"),
+            autosize=True
         )
         return fig
     
@@ -272,8 +288,16 @@ def plot_gdp_comparison(gdp_data, start_year, end_year):
         xaxis_title="Year",
         yaxis_title="GDP Value",
         template="plotly_dark",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        paper_bgcolor="black",
+        plot_bgcolor="black",
+        font=dict(color="white"),
+        autosize=True
     )
+    
+    # Enable autoscaling for both axes
+    fig.update_xaxes(autorange=True)
+    fig.update_yaxes(autorange=True)
     
     return fig
 
@@ -283,7 +307,11 @@ def plot_commodities(commodity_data):
         fig = go.Figure()
         fig.update_layout(
             title="No Commodity Data Available",
-            template="plotly_dark"
+            template="plotly_dark",
+            paper_bgcolor="black",
+            plot_bgcolor="black",
+            font=dict(color="white"),
+            autosize=True
         )
         return fig
         
@@ -313,8 +341,17 @@ def plot_commodities(commodity_data):
         title_text="Commodity Price Trends",
         template="plotly_dark",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        showlegend=True
+        showlegend=True,
+        paper_bgcolor="black",
+        plot_bgcolor="black",
+        font=dict(color="white"),
+        autosize=True
     )
+    
+    # Enable autoscaling for each subplot
+    for i in range(1, len(commodity_data.columns) + 1):
+        fig.update_xaxes(autorange=True, row=i, col=1)
+        fig.update_yaxes(autorange=True, row=i, col=1)
     
     return fig
 
@@ -334,8 +371,55 @@ def convert_date_option(date_option):
 
 # Main Gradio interface
 def create_dashboard():
-    with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="purple", neutral_hue="slate")) as dashboard:
-        gr.Markdown("# Financial Markets Dashboard")
+    with gr.Blocks(theme="dark") as dashboard:
+        gr.Markdown("# Financial Markets Dashboard", elem_id="dashboard-title")
+        
+        # Add custom CSS for complete black background
+        gr.HTML("""
+        <style>
+            body, .gradio-container, .dark {
+                background-color: black !important;
+            }
+            
+            .tabs {
+                background-color: black !important;
+                border-color: #333 !important;
+            }
+            
+            .tab-nav {
+                background-color: black !important;
+            }
+            
+            .tab-nav button {
+                background-color: black !important;
+                color: white !important;
+                border-color: #333 !important;
+            }
+            
+            .tab-nav button.selected {
+                border-bottom-color: white !important;
+            }
+            
+            #dashboard-title {
+                color: white !important;
+            }
+            
+            .form {
+                background-color: black !important;
+                border-color: #333 !important;
+            }
+            
+            input, select, button {
+                background-color: #111 !important;
+                color: white !important;
+                border-color: #333 !important;
+            }
+            
+            label, p {
+                color: white !important;
+            }
+        </style>
+        """)
         
         # Create tabs for different visualizations
         with gr.Tabs() as tabs:
