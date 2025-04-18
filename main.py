@@ -12,6 +12,20 @@ from plotly.subplots import make_subplots
 
 dotenv.load_dotenv()
 
+SVG_LOGO = """
+<svg id='dashboard-logo-svg' width='48' height='48' viewBox='0 0 48 48' fill='none' xmlns='http://www.w3.org/2000/svg'>
+  <circle cx='24' cy='24' r='22' stroke='white' stroke-width='2'/>
+  <ellipse cx='24' cy='24' rx='22' ry='8' stroke='white' stroke-width='1.5'/>
+  <ellipse cx='24' cy='24' rx='22' ry='16' stroke='white' stroke-width='1'/>
+  <polyline points='10,30 18,22 24,26 32,14 38,18' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/>
+  <circle cx='10' cy='30' r='2.4' fill='white'/>
+  <circle cx='18' cy='22' r='2.4' fill='white'/>
+  <circle cx='24' cy='26' r='2.4' fill='white'/>
+  <circle cx='32' cy='14' r='2.4' fill='white'/>
+  <circle cx='38' cy='18' r='2.4' fill='white'/>
+</svg>
+"""
+
 # Plotting functions
 def plot_interest_rates(interest_data, currencies_to_display):
     """
@@ -34,6 +48,36 @@ def plot_interest_rates(interest_data, currencies_to_display):
     # Debug information
     print(f"Plotting interest rates with shape: {interest_data.shape}")
     print(f"Columns: {interest_data.columns.tolist()}")
+    
+    # Thin out the US data if it has more points than other currencies
+    if 'USD' in interest_data.columns:
+        # Count non-NaN values for each currency
+        data_counts = {currency: interest_data[currency].dropna().shape[0] 
+                      for currency in interest_data.columns}
+        print(f"Data points per currency: {data_counts}")
+        
+        # Find the median number of points (excluding USD)
+        non_usd_counts = [count for curr, count in data_counts.items() if curr != 'USD']
+        if non_usd_counts:
+            target_count = int(sum(non_usd_counts) / len(non_usd_counts))
+            
+            # If USD has significantly more points, thin it out
+            if 'USD' in data_counts and data_counts['USD'] > target_count * 1.5:
+                print(f"Thinning USD data from {data_counts['USD']} to ~{target_count} points")
+                
+                # Get USD data without NaN values
+                usd_data = interest_data['USD'].dropna()
+                
+                # Calculate the step size to get approximately target_count points
+                step = max(1, len(usd_data) // target_count)
+                
+                # Create a mask for the rows to keep
+                mask = pd.Series(False, index=interest_data.index)
+                mask[usd_data.index[::step]] = True
+                
+                # Apply the mask to USD data
+                interest_data.loc[~mask, 'USD'] = None
+                print(f"USD data thinned to {interest_data['USD'].dropna().shape[0]} points")
     
     fig = go.Figure()
     
@@ -305,21 +349,23 @@ def plot_commodities(commodity_data):
     return fig
 
 # Helper function to convert date options to actual dates
-def convert_date_option(date_option):
-    date_options = {
-        "Today": datetime.now().strftime('%Y-%m-%d'),
-        "Yesterday": (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'),
-        "1 Week Ago": (datetime.now() - timedelta(weeks=1)).strftime('%Y-%m-%d'),
-        "1 Month Ago": (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
-        "3 Months Ago": (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d'),
-        "6 Months Ago": (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d'),
-        "1 Year Ago": (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
-        "5 Years Ago": (datetime.now() - timedelta(days=5*365)).strftime('%Y-%m-%d'),
-        "10 Years Ago": (datetime.now() - timedelta(days=10*365)).strftime('%Y-%m-%d'),
-        "15 Years Ago": (datetime.now() - timedelta(days=15*365)).strftime('%Y-%m-%d'),
-        "20 Years Ago": (datetime.now() - timedelta(days=20*365)).strftime('%Y-%m-%d')
+def convert_date_option(option: str) -> str:
+    """Convert preset strings (e.g. '1 Month Ago') to ISO‑8601 dates."""
+    offsets = {
+        'Today': 0,
+        'Yesterday': 1,
+        '1 Week Ago': 7,
+        '1 Month Ago': 30,
+        '3 Months Ago': 90,
+        '6 Months Ago': 180,
+        '1 Year Ago': 365,
+        '5 Years Ago': 5 * 365,
+        '10 Years Ago': 10 * 365,
+        '15 Years Ago': 15 * 365,
+        '20 Years Ago': 20 * 365,
     }
-    return date_options[date_option]
+    days = offsets[option]
+    return (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
 
 def update_interest_rates(start_date_option, end_date_option, currencies_to_display):
     start_date = convert_date_option(start_date_option)
@@ -551,12 +597,40 @@ def plot_commodity_detail(commodity_name, commodity_df):
 
 # Main Gradio interface
 def create_dashboard():
-    with gr.Blocks(theme="dark") as dashboard:
-        gr.Markdown("# International Finance Dashboard", elem_id="dashboard-title")
-        
-        # Add custom CSS for complete black background
+    with gr.Blocks(theme='dark') as dashboard:
+
+        # Add the updated header styling
         gr.HTML("""
         <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+            body, .gradio-container, .dark {background:#000!important;color:#fff;font-family:'Inter',sans-serif;}
+            #dashboard-header {
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #333;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+            }
+            #dashboard-logo-container {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            margin-right: auto;
+            }
+            #dashboard-logo-svg {
+            height: 36px;
+            width: 36px;
+            display: inline-block;
+            margin-right: 8px;
+            flex-shrink: 0;
+            }
+            #dashboard-title {
+            font-size: 1.5rem!important;
+            font-weight: 700;
+            margin: 0;
+            white-space: nowrap;
+            display: inline-block;
+            }
             body, .gradio-container, .dark {
                 background-color: black !important;
             }
@@ -600,7 +674,23 @@ def create_dashboard():
             }
         </style>
         """)
-        
+
+        # ---- Header row with fixed structure ----
+        with gr.Row(elem_id='dashboard-header'):
+            with gr.Column(scale=1, min_width=0):
+                with gr.Row():
+                    # Wrap logo and title in a container to ensure they stay together
+                    gr.HTML(f"""
+                    <div id="dashboard-logo-container">
+                        {SVG_LOGO}
+                        <h2 id="dashboard-title">International Finance</h2>
+                    </div>
+                    """)
+            
+            # Empty column to push content to the left
+            with gr.Column(scale=3, min_width=0):
+                gr.HTML("")
+
         # Create tabs for different visualizations
         with gr.Tabs() as tabs:
             # Interest Rates Tab
