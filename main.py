@@ -149,7 +149,15 @@ def plot_gdp_comparison(gdp_data, start_year, end_year):
 
 def plot_inflation_comparison(inflation_data, start_year, end_year):
     """
-    Plot inflation comparison across countries
+    Plot inflation comparison across countries as a line graph
+    
+    Parameters:
+    inflation_data (pandas.DataFrame): DataFrame with inflation data
+    start_year (int): Start year for x-axis
+    end_year (int): End year for x-axis
+    
+    Returns:
+    plotly.graph_objects.Figure: The plotted figure
     """
     if inflation_data is None or inflation_data.empty:
         fig = go.Figure()
@@ -165,7 +173,7 @@ def plot_inflation_comparison(inflation_data, start_year, end_year):
         )
         return fig
     
-    # Create a bar chart for inflation data
+    # Create a line chart for inflation data
     fig = go.Figure()
     
     # Get years as columns (excluding 'Country')
@@ -175,19 +183,33 @@ def plot_inflation_comparison(inflation_data, start_year, end_year):
     colors = ['red', 'blue', 'green', 'purple', 'orange']
     
     # Add a trace for each country
-    for i, country in enumerate(inflation_data['Country']):
+    for i, country in enumerate(inflation_data['Country'].unique()):
         color_idx = i % len(colors)
         
         country_data = inflation_data[inflation_data['Country'] == country]
         
         # Extract values for this country across all years
-        values = [country_data[year].values[0] if year in country_data.columns else None for year in years]
+        x_values = []
+        y_values = []
         
-        fig.add_trace(go.Bar(
-            x=years,
-            y=values,
+        for year in years:
+            if year in country_data.columns:
+                value = country_data[year].values[0]
+                if pd.notna(value):  # Only include non-NaN values
+                    x_values.append(int(year))
+                    y_values.append(value)
+        
+        # Sort by year (x-axis)
+        sorted_indices = sorted(range(len(x_values)), key=lambda k: x_values[k])
+        x_values = [x_values[i] for i in sorted_indices]
+        y_values = [y_values[i] for i in sorted_indices]
+        
+        fig.add_trace(go.Scatter(
+            x=x_values,
+            y=y_values,
+            mode='lines+markers',
             name=country,
-            marker_color=colors[color_idx]
+            line=dict(color=colors[color_idx], width=2)
         ))
     
     fig.update_layout(
@@ -195,7 +217,6 @@ def plot_inflation_comparison(inflation_data, start_year, end_year):
         xaxis_title="Year",
         yaxis_title="Inflation Rate (%)",
         template="plotly_dark",
-        barmode='group',
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         paper_bgcolor="black",
         plot_bgcolor="black",
