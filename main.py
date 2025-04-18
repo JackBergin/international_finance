@@ -1,270 +1,21 @@
 import gradio as gr
 import pandas as pd
-import numpy as np
-import yfinance as yf
-import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-import requests
-from bs4 import BeautifulSoup
-import json
 import warnings
-import openpyxl
-from fredapi import Fred
-import os
 import dotenv
-
+from data import get_interest_rates, get_gdp_data, get_inflation_data, get_cpi_data, get_commodity_data, get_commodity_data_with_volume
 warnings.filterwarnings('ignore')
 import pandas as pd
+import yfinance as yf
+from plotly.subplots import make_subplots
 
 dotenv.load_dotenv()
-
-def get_interest_rates(currencies, start_date, end_date):
-    """
-    Retrieve 10-year government bond yields from FRED for the specified currencies.
-    The function returns a DataFrame of yields (percent) indexed by date.
-    
-    Parameters:
-    -----------
-    currencies : list
-        List of currency codes or country identifiers (e.g., ['USD','EUR', ...]).
-    start_date : str or datetime-like
-        Start date for data retrieval, in YYYY-MM-DD format or a datetime object.
-    end_date : str or datetime-like
-        End date for data retrieval, in YYYY-MM-DD format or a datetime object.
-        
-    Returns:
-    --------
-    interest_rates : pd.DataFrame
-        DataFrame indexed by date, with one column per currency (country) representing the yield time series.
-    """
-    
-    # FRED series IDs for 10-year government bond yields.
-    # These IDs are subject to change/availability. Check FRED for the latest info.
-    all_proxies_fred = {
-        'USD': 'DGS10',               # 10-Year Treasury Constant Maturity (Percent)
-        'EUR': 'IRLTLT01EZM156N',     # 10-Year Govt Bond Yields: Euro Area
-        'GBP': 'IRLTLT01GBM156N',     # 10-Year Govt Bond Yields: United Kingdom
-        'CNY': 'IRLTLT01CNM156N',     # 10-Year Govt Bond Yields: China
-        'AUD': 'IRLTLT01AUM156N',     # 10-Year Govt Bond Yields: Australia
-        'CAD': 'IRLTLT01CAM156N',     # 10-Year Govt Bond Yields: Canada
-    }
-    
-    # Initialize FRED client. Replace with your own API key.
-    fred = Fred(api_key=os.getenv('FRED_API_KEY'))
-    
-    # If no currencies specified, use the entire list
-    if not currencies:
-        currencies = list(all_proxies_fred.keys())
-    
-    interest_rates = pd.DataFrame()
-    
-    # Loop over each requested currency
-    for currency in currencies:
-        series_id = all_proxies_fred.get(currency)
-        if not series_id:
-            print(f"No FRED series found for {currency}, skipping.")
-            continue
-        
-        print(f"Downloading FRED data for {currency} (Series ID: {series_id})")
-        
-        try:
-            # fred.get_series returns a pandas Series with a DatetimeIndex by default
-            data_series = fred.get_series(series_id,
-                                          observation_start=start_date,
-                                          observation_end=end_date)
-            
-            if data_series is None or data_series.empty:
-                print(f"No data returned for {currency}")
-                continue
-            
-            # Add this series to the interest_rates DataFrame
-            interest_rates[currency] = data_series
-            print(f"Successfully retrieved data for {currency}")
-        
-        except Exception as e:
-            print(f"Error retrieving data for {currency}: {e}")
-    
-    # The resulting DataFrame is indexed by date, with columns = [currency codes]
-    # Each value is the daily (or monthly) yield for that date, depending on series frequency.
-    return interest_rates
-    
-
-def get_gdp_data(countries, start_year, end_year):
-    """
-    Get GDP data for selected countries from CSV file with year range filter
-    
-    Parameters:
-    countries (list): List of country codes to filter
-    start_year (int): Start year for the data range
-    end_year (int): End year for the data range
-    
-    Returns:
-    pandas.DataFrame: Filtered GDP data for the selected countries and years
-    """
-    try:
-        # Read GDP data from CSV file
-        gdp_df = pd.read_csv('./data/gdp_data.csv', skiprows=4)
-        
-        # Map country codes to full names for filtering
-        country_mapping = {
-            'US': 'United States',
-            'UK': 'United Kingdom',
-            'China': 'China',
-            'Canada': 'Canada',
-            'Australia': 'Australia'
-        }
-        
-        # Convert selected country codes to full names
-        selected_countries = [country_mapping.get(country) for country in countries if country in country_mapping]
-        
-        # Filter data for selected countries
-        filtered_data = gdp_df[gdp_df['Country Name'].isin(selected_countries)]
-        
-        if filtered_data.empty:
-            return None
-            
-        # Select only the year columns within the specified range
-        year_columns = [str(year) for year in range(start_year, end_year + 1)]
-        available_year_columns = [col for col in year_columns if col in filtered_data.columns]
-        
-        if not available_year_columns:
-            return None
-            
-        # Select country name and year columns
-        result_df = filtered_data[['Country Name'] + available_year_columns].copy()
-        
-        # Melt the dataframe to convert years from columns to rows
-        melted_df = pd.melt(
-            result_df, 
-            id_vars=['Country Name'], 
-            value_vars=available_year_columns,
-            var_name='Year', 
-            value_name='Value'
-        )
-        
-        # Convert Year column to integer
-        melted_df['Year'] = melted_df['Year'].astype(int)
-        
-        # Rename Country Name to Country for consistency
-        melted_df = melted_df.rename(columns={'Country Name': 'Country'})
-        
-        # Pivot the data to have years as columns and countries as rows for easier plotting
-        pivot_df = melted_df.pivot(index='Country', columns='Year', values='Value').reset_index()
-        
-        return pivot_df
-        
-    except Exception as e:
-        print(f"Error reading GDP data from CSV: {e}")
-        return None
-
-def get_inflation_data(countries, start_year, end_year):
-    """
-    Get inflation data for selected countries from CSV file with year range filter
-    
-    Parameters:
-    countries (list): List of country codes to filter
-    start_year (int): Start year for the data range
-    end_year (int): End year for the data range
-    
-    Returns:
-    pandas.DataFrame: Filtered GDP data for the selected countries and years
-    """
-    try:
-        # Read GDP data from CSV file
-        inflation_df = pd.read_csv('./data/inflation_data.csv', skiprows=4)
-        
-        # Map country codes to full names for filtering
-        country_mapping = {
-            'US': 'United States',
-            'UK': 'United Kingdom',
-            'China': 'China',
-            'Canada': 'Canada',
-            'Australia': 'Australia'
-        }
-        
-        # Convert selected country codes to full names
-        selected_countries = [country_mapping.get(country) for country in countries if country in country_mapping]
-        
-        # Filter data for selected countries
-        filtered_data = inflation_df[inflation_df['Country Name'].isin(selected_countries)]
-        
-        if filtered_data.empty:
-            return None
-            
-        # Select only the year columns within the specified range
-        year_columns = [str(year) for year in range(start_year, end_year + 1)]
-        available_year_columns = [col for col in year_columns if col in filtered_data.columns]
-        
-        if not available_year_columns:
-            return None
-            
-        # Select country name and year columns
-        result_df = filtered_data[['Country Name'] + available_year_columns].copy()
-        
-        # Melt the dataframe to convert years from columns to rows
-        melted_df = pd.melt(
-            result_df, 
-            id_vars=['Country Name'], 
-            value_vars=available_year_columns,
-            var_name='Year', 
-            value_name='Value'
-        )
-        
-        # Convert Year column to integer
-        melted_df['Year'] = melted_df['Year'].astype(int)
-        
-        # Rename Country Name to Country for consistency
-        melted_df = melted_df.rename(columns={'Country Name': 'Country'})
-        
-        # Pivot the data to have years as columns and countries as rows for easier plotting
-        pivot_df = melted_df.pivot(index='Country', columns='Year', values='Value').reset_index()
-        
-        return pivot_df
-        
-    except Exception as e:
-        print(f"Error reading inflation data from CSV: {e}")
-        return None
-
-def get_commodity_data(commodities, start_date, end_date):
-    """
-    Get price data for selected commodities
-    """
-    # Tickers for commodities
-    tickers = {
-        'Oil': 'CL=F',  # Crude Oil Futures
-        'Gold': 'GC=F',  # Gold Futures
-        'Silver': 'SI=F',  # Silver Futures
-        'BTC': 'BTC-USD',  # Bitcoin
-        'ETH': 'ETH-USD'   # Ethereum
-    }
-    
-    commodity_data = pd.DataFrame()
-    
-    for commodity in commodities:
-        if commodity in tickers:
-            try:
-                data = yf.download(tickers[commodity], start=start_date, end=end_date)
-                if not data.empty:
-                    commodity_data[commodity] = data['Close']
-            except Exception as e:
-                print(f"Error getting data for {commodity}: {e}")
-    
-    return commodity_data
 
 # Plotting functions
 def plot_interest_rates(interest_data, currencies_to_display):
     """
     Plot interest rates for the selected currencies
-    
-    Parameters:
-    interest_data (pandas.DataFrame): DataFrame with interest rate data for all currencies
-    currencies_to_display (list): List of currencies to display in the plot
-    
-    Returns:
-    plotly.graph_objects.Figure: The plotted figure
     """
     if interest_data is None or interest_data.empty:
         fig = go.Figure()
@@ -274,36 +25,27 @@ def plot_interest_rates(interest_data, currencies_to_display):
             paper_bgcolor="black",
             plot_bgcolor="black",
             font=dict(color="white"),
-            autosize=True
+            autosize=True,
+            height=500,  # Set a consistent height
+            margin=dict(l=50, r=50, t=80, b=50)  # Adjust margins for better use of space
         )
         return fig
     
     # Debug information
-    print(f"Interest data columns: {interest_data.columns.tolist()}")
-    print(f"Currencies to display: {currencies_to_display}")
-    print(f"Interest data shape: {interest_data.shape}")
-    print(f"Interest data sample:\n{interest_data.head()}")
+    print(f"Plotting interest rates with shape: {interest_data.shape}")
+    print(f"Columns: {interest_data.columns.tolist()}")
     
     fig = go.Figure()
-    
-    # Filter to include only the currencies we have data for
-    available_currencies = [c for c in currencies_to_display if c in interest_data.columns]
-    
-    # If no selected currencies have data, show all available currencies
-    if not available_currencies and not interest_data.empty:
-        available_currencies = interest_data.columns.tolist()
-    
-    print(f"Available currencies for plotting: {available_currencies}")
     
     # Use different colors for each currency for better visibility
     colors = ['red', 'blue', 'green', 'purple', 'orange', 'cyan']
     
-    for i, currency in enumerate(available_currencies):
+    for i, currency in enumerate(currencies_to_display):
         # Get color index with wraparound if we have more currencies than colors
         color_idx = i % len(colors)
         
-        # Make sure the data for this currency is not all NaN
-        if interest_data[currency].notna().any():
+        # Make sure the currency is in the data and not all NaN
+        if currency in interest_data.columns and interest_data[currency].notna().any():
             # Create a copy without NaN values for this trace
             plot_data = interest_data[currency].dropna()
             
@@ -316,18 +58,20 @@ def plot_interest_rates(interest_data, currencies_to_display):
             ))
             print(f"Added trace for {currency} with {len(plot_data)} points")
         else:
-            print(f"No non-NaN data for {currency}, skipping")
+            print(f"No data for {currency}, skipping")
     
     fig.update_layout(
         title="Interest Rates by Currency",
         xaxis_title="Date",
-        yaxis_title="Rate (%)",
+        yaxis_title="Interest Rate (%)",
         template="plotly_dark",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         paper_bgcolor="black",
         plot_bgcolor="black",
         font=dict(color="white"),
-        autosize=True
+        autosize=True,
+        height=500,  # Set a consistent height
+        margin=dict(l=50, r=50, t=80, b=50)  # Adjust margins for better use of space
     )
     
     # Enable autoscaling for both axes
@@ -405,15 +149,7 @@ def plot_gdp_comparison(gdp_data, start_year, end_year):
 
 def plot_inflation_comparison(inflation_data, start_year, end_year):
     """
-    Plot inflation comparison as a step function across years
-    
-    Parameters:
-    inflation_data (pandas.DataFrame): DataFrame with inflation data
-    start_year (int): Start year for x-axis
-    end_year (int): End year for x-axis
-    
-    Returns:
-    plotly.graph_objects.Figure: The plotted figure
+    Plot inflation comparison across countries
     """
     if inflation_data is None or inflation_data.empty:
         fig = go.Figure()
@@ -423,44 +159,50 @@ def plot_inflation_comparison(inflation_data, start_year, end_year):
             paper_bgcolor="black",
             plot_bgcolor="black",
             font=dict(color="white"),
-            autosize=True
+            autosize=True,
+            height=500,  # Set a consistent height
+            margin=dict(l=50, r=50, t=80, b=50)  # Adjust margins for better use of space
         )
         return fig
     
+    # Create a bar chart for inflation data
     fig = go.Figure()
     
-    # Get all year columns (excluding the 'Country' column)
-    year_columns = [col for col in inflation_data.columns if col != 'Country']
+    # Get years as columns (excluding 'Country')
+    years = [col for col in inflation_data.columns if col != 'Country']
     
-    # Filter years based on the range
-    year_columns = [year for year in year_columns if start_year <= year <= end_year]
+    # Use different colors for each country
+    colors = ['red', 'blue', 'green', 'purple', 'orange']
     
-    # For each country, add a step line
-    for _, row in inflation_data.iterrows():
-        country = row['Country']
+    # Add a trace for each country
+    for i, country in enumerate(inflation_data['Country']):
+        color_idx = i % len(colors)
         
-        # Extract values for the selected years
-        years = [year for year in year_columns]
-        values = [row[year] for year in year_columns]
+        country_data = inflation_data[inflation_data['Country'] == country]
         
-        fig.add_trace(go.Scatter(
+        # Extract values for this country across all years
+        values = [country_data[year].values[0] if year in country_data.columns else None for year in years]
+        
+        fig.add_trace(go.Bar(
             x=years,
             y=values,
-            mode='lines+markers',
             name=country,
-            line=dict(shape='hv')  # 'hv' creates horizontal first, then vertical line (step function)
+            marker_color=colors[color_idx]
         ))
     
     fig.update_layout(
-        title="Inflation Trends by Country",
+        title=f"Inflation Rates by Country ({start_year}-{end_year})",
         xaxis_title="Year",
-        yaxis_title="Inflation Rate",
+        yaxis_title="Inflation Rate (%)",
         template="plotly_dark",
+        barmode='group',
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         paper_bgcolor="black",
         plot_bgcolor="black",
         font=dict(color="white"),
-        autosize=True
+        autosize=True,
+        height=500,  # Set a consistent height
+        margin=dict(l=50, r=50, t=80, b=50)  # Adjust margins for better use of space
     )
     
     # Enable autoscaling for both axes
@@ -470,7 +212,9 @@ def plot_inflation_comparison(inflation_data, start_year, end_year):
     return fig
 
 def plot_commodities(commodity_data):
-    """Plot commodity prices"""
+    """
+    Plot commodity prices
+    """
     if commodity_data is None or commodity_data.empty:
         fig = go.Figure()
         fig.update_layout(
@@ -479,47 +223,63 @@ def plot_commodities(commodity_data):
             paper_bgcolor="black",
             plot_bgcolor="black",
             font=dict(color="white"),
-            autosize=True
+            autosize=True,
+            height=500,  # Set a consistent height
+            margin=dict(l=50, r=50, t=80, b=50)  # Adjust margins for better use of space
         )
         return fig
-        
-    # Create subplots: one for each commodity to better visualize different scales
-    fig = make_subplots(
-        rows=len(commodity_data.columns), 
-        cols=1,
-        subplot_titles=[f"{commodity} Price" for commodity in commodity_data.columns],
-        shared_xaxes=True,
-        vertical_spacing=0.05
-    )
     
-    for i, commodity in enumerate(commodity_data.columns):
-        fig.add_trace(
-            go.Scatter(
-                x=commodity_data.index,
-                y=commodity_data[commodity],
-                mode='lines',
-                name=commodity
-            ),
-            row=i+1, 
-            col=1
-        )
+    fig = go.Figure()
+    
+    # Use different colors for each commodity
+    colors = {
+        'Oil': 'red',
+        'Gold': 'gold',
+        'Silver': 'silver',
+        'BTC': 'orange',
+        'ETH': 'blue'
+    }
+    
+    # Normalize all prices to start at 100 for easier comparison
+    normalized_data = pd.DataFrame()
+    
+    for commodity in commodity_data.columns:
+        if not commodity_data[commodity].empty and commodity_data[commodity].notna().any():
+            # Get the first valid value
+            first_valid = commodity_data[commodity].dropna().iloc[0]
+            if first_valid != 0:  # Avoid division by zero
+                # Normalize to start at 100
+                normalized_data[commodity] = (commodity_data[commodity] / first_valid) * 100
+    
+    # Plot each commodity
+    for commodity in normalized_data.columns:
+        color = colors.get(commodity, 'gray')  # Default to gray if commodity not in colors dict
+        
+        fig.add_trace(go.Scatter(
+            x=normalized_data.index,
+            y=normalized_data[commodity],
+            mode='lines',
+            name=commodity,
+            line=dict(color=color, width=2)
+        ))
     
     fig.update_layout(
-        height=300 * len(commodity_data.columns),
-        title_text="Commodity Price Trends",
+        title="Commodity Price Performance (Normalized to 100)",
+        xaxis_title="Date",
+        yaxis_title="Normalized Price",
         template="plotly_dark",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        showlegend=True,
         paper_bgcolor="black",
         plot_bgcolor="black",
         font=dict(color="white"),
-        autosize=True
+        autosize=True,
+        height=500,  # Set a consistent height
+        margin=dict(l=50, r=50, t=80, b=50)  # Adjust margins for better use of space
     )
     
-    # Enable autoscaling for each subplot
-    for i in range(1, len(commodity_data.columns) + 1):
-        fig.update_xaxes(autorange=True, row=i, col=1)
-        fig.update_yaxes(autorange=True, row=i, col=1)
+    # Enable autoscaling for both axes
+    fig.update_xaxes(autorange=True)
+    fig.update_yaxes(autorange=True)
     
     return fig
 
@@ -553,85 +313,9 @@ def update_interest_rates(start_date_option, end_date_option, currencies_to_disp
     
     return plot_interest_rates(interest_data, currencies_to_display)
 
-def get_cpi_data(countries, start_date, end_date):
-    """
-    Retrieve Consumer Price Index (CPI) data from FRED for the specified countries.
-    
-    Parameters:
-    -----------
-    countries : list
-        List of country codes to filter
-    start_date : str or datetime-like
-        Start date for data retrieval, in YYYY-MM-DD format or a datetime object.
-    end_date : str or datetime-like
-        End date for data retrieval, in YYYY-MM-DD format or a datetime object.
-        
-    Returns:
-    --------
-    cpi_data : pd.DataFrame
-        DataFrame indexed by date, with one column per country representing the CPI time series.
-    """
-    # FRED series IDs for CPI data
-    cpi_series_ids = {
-        'US': 'CPIAUCSL',          # Consumer Price Index for All Urban Consumers: All Items in U.S. City Average
-        'UK': 'GBRCPIALLMINMEI',   # Consumer Price Index: All Items for United Kingdom
-        'China': 'CHNCPIALLMINMEI', # Consumer Price Index: All Items for China
-        'Canada': 'CANCPIALLMINMEI', # Consumer Price Index: All Items for Canada
-        'Australia': 'AUSCPIALLMINMEI' # Consumer Price Index: All Items for Australia
-    }
-    
-    # Initialize FRED client
-    fred = Fred(api_key=os.getenv('FRED_API_KEY'))
-    
-    # Map country codes to full names for filtering
-    country_mapping = {
-        'US': 'United States',
-        'UK': 'United Kingdom',
-        'China': 'China',
-        'Canada': 'Canada',
-        'Australia': 'Australia'
-    }
-    
-    cpi_data = pd.DataFrame()
-    
-    # Loop over each requested country
-    for country in countries:
-        series_id = cpi_series_ids.get(country)
-        if not series_id:
-            print(f"No FRED CPI series found for {country}, skipping.")
-            continue
-        
-        print(f"Downloading FRED CPI data for {country} (Series ID: {series_id})")
-        
-        try:
-            # Get CPI data from FRED
-            data_series = fred.get_series(series_id,
-                                         observation_start=start_date,
-                                         observation_end=end_date)
-            
-            if data_series is None or data_series.empty:
-                print(f"No CPI data returned for {country}")
-                continue
-            
-            # Add this series to the CPI data DataFrame
-            country_name = country_mapping.get(country, country)
-            cpi_data[country_name] = data_series
-            print(f"Successfully retrieved CPI data for {country}")
-            
-        except Exception as e:
-            print(f"Error retrieving CPI data for {country}: {e}")
-    
-    return cpi_data
-
 def plot_cpi_comparison(cpi_data):
     """
     Plot CPI comparison across countries
-    
-    Parameters:
-    cpi_data (pandas.DataFrame): DataFrame with CPI data
-    
-    Returns:
-    plotly.graph_objects.Figure: The plotted figure
     """
     if cpi_data is None or cpi_data.empty:
         fig = go.Figure()
@@ -641,7 +325,9 @@ def plot_cpi_comparison(cpi_data):
             paper_bgcolor="black",
             plot_bgcolor="black",
             font=dict(color="white"),
-            autosize=True
+            autosize=True,
+            height=500,  # Set a consistent height
+            margin=dict(l=50, r=50, t=80, b=50)  # Adjust margins for better use of space
         )
         return fig
     
@@ -679,10 +365,164 @@ def plot_cpi_comparison(cpi_data):
         paper_bgcolor="black",
         plot_bgcolor="black",
         font=dict(color="white"),
-        autosize=True
+        autosize=True,
+        height=500,  # Set a consistent height
+        margin=dict(l=50, r=50, t=80, b=50)  # Adjust margins for better use of space
     )
     
     # Enable autoscaling for both axes
+    fig.update_xaxes(autorange=True)
+    fig.update_yaxes(autorange=True)
+    
+    return fig
+
+def plot_commodity_detail(commodity_name, commodity_df):
+    """
+    Create a detailed plot for a single commodity with price and volume
+    """
+    if commodity_df is None:
+        print(f"No data available for {commodity_name}")
+        fig = go.Figure()
+        fig.update_layout(
+            title=f"No Data Available for {commodity_name}",
+            template="plotly_dark",
+            paper_bgcolor="black",
+            plot_bgcolor="black",
+            font=dict(color="white"),
+            autosize=True,
+            height=500,
+            margin=dict(l=50, r=50, t=80, b=50)
+        )
+        return fig
+    
+    print(f"Creating detail plot for {commodity_name} with {len(commodity_df)} data points")
+    print(f"Columns available: {commodity_df.columns.tolist()}")
+    
+    # Handle MultiIndex columns if present
+    if isinstance(commodity_df.columns, pd.MultiIndex):
+        # Check if Volume is in the second level of the MultiIndex
+        has_volume = any('Volume' in col for col in commodity_df.columns)
+        
+        # Flatten MultiIndex columns for easier access
+        commodity_df.columns = [col[0] if isinstance(col, tuple) else col for col in commodity_df.columns]
+    else:
+        # Standard check for Volume column
+        has_volume = 'Volume' in commodity_df.columns
+    
+    # Make sure Volume has data if the column exists
+    if has_volume and 'Volume' in commodity_df.columns:
+        has_volume = commodity_df['Volume'].sum() > 0
+    
+    if has_volume:
+        # Create figure with secondary y-axis for volume
+        fig = make_subplots(rows=2, cols=1, 
+                            shared_xaxes=True, 
+                            vertical_spacing=0.05, 
+                            row_heights=[0.7, 0.3])
+    else:
+        # Create a single plot for price only
+        fig = go.Figure()
+    
+    # Colors based on commodity
+    colors = {
+        'Oil': 'red',
+        'Gold': 'gold',
+        'Silver': 'silver',
+        'BTC': 'orange',
+        'ETH': 'blue'
+    }
+    
+    color = colors.get(commodity_name, 'white')
+    
+    # Make sure we have the Close column
+    if 'Close' not in commodity_df.columns:
+        # Try to find a column that might contain close prices
+        close_candidates = [col for col in commodity_df.columns if 'close' in str(col).lower()]
+        if close_candidates:
+            close_column = close_candidates[0]
+        else:
+            # If no close column found, use the first numeric column
+            numeric_cols = commodity_df.select_dtypes(include=['number']).columns
+            close_column = numeric_cols[0] if len(numeric_cols) > 0 else None
+            
+        if close_column is None:
+            print(f"No suitable price data found for {commodity_name}")
+            fig = go.Figure()
+            fig.update_layout(
+                title=f"No Price Data Available for {commodity_name}",
+                template="plotly_dark",
+                paper_bgcolor="black",
+                plot_bgcolor="black",
+                font=dict(color="white"),
+                autosize=True,
+                height=500,
+                margin=dict(l=50, r=50, t=80, b=50)
+            )
+            return fig
+    else:
+        close_column = 'Close'
+    
+    if has_volume:
+        # Add price trace to subplot
+        fig.add_trace(
+            go.Scatter(
+                x=commodity_df.index,
+                y=commodity_df[close_column],
+                mode='lines',
+                name=f'{commodity_name} Price',
+                line=dict(color=color, width=2)
+            ),
+            row=1, col=1
+        )
+        
+        # Add volume trace as bar chart
+        fig.add_trace(
+            go.Bar(
+                x=commodity_df.index,
+                y=commodity_df['Volume'],
+                name='Volume',
+                marker=dict(color='rgba(100, 100, 100, 0.5)')
+            ),
+            row=2, col=1
+        )
+        
+        # Update y-axes labels
+        fig.update_yaxes(title_text="Price", row=1, col=1)
+        fig.update_yaxes(title_text="Volume", row=2, col=1)
+        
+        # Update x-axis
+        fig.update_xaxes(title_text="Date", row=2, col=1)
+    else:
+        # Add price trace to main figure
+        fig.add_trace(
+            go.Scatter(
+                x=commodity_df.index,
+                y=commodity_df[close_column],
+                mode='lines',
+                name=f'{commodity_name} Price',
+                line=dict(color=color, width=2)
+            )
+        )
+        
+        # Update axes labels
+        fig.update_xaxes(title_text="Date")
+        fig.update_yaxes(title_text="Price")
+    
+    # Update layout
+    fig.update_layout(
+        title=f"{commodity_name} Price" + (" and Volume" if has_volume else ""),
+        template="plotly_dark",
+        paper_bgcolor="black",
+        plot_bgcolor="black",
+        font=dict(color="white"),
+        autosize=True,
+        height=600,
+        margin=dict(l=50, r=50, t=80, b=50),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    # Enable autoscaling for all axes
     fig.update_xaxes(autorange=True)
     fig.update_yaxes(autorange=True)
     
@@ -896,19 +736,52 @@ def create_dashboard():
                 with gr.Row():
                     commodity_update_btn = gr.Button("Update Commodities")
                 
-                commodity_plot = gr.Plot(label="Commodity Prices")
+                # Main comparison chart
+                commodity_plot = gr.Plot(label="Commodity Price Comparison")
+                
+                # Create a tabbed interface for detailed charts
+                with gr.Tabs(elem_id="commodity_detail_tabs") as commodity_detail_tabs:
+                    with gr.Tab("Oil") as oil_tab:
+                        oil_detail_plot = gr.Plot(label="Oil Detail")
+                    
+                    with gr.Tab("Gold") as gold_tab:
+                        gold_detail_plot = gr.Plot(label="Gold Detail")
+                    
+                    with gr.Tab("Silver") as silver_tab:
+                        silver_detail_plot = gr.Plot(label="Silver Detail")
+                    
+                    with gr.Tab("BTC") as btc_tab:
+                        btc_detail_plot = gr.Plot(label="Bitcoin Detail")
+                    
+                    with gr.Tab("ETH") as eth_tab:
+                        eth_detail_plot = gr.Plot(label="Ethereum Detail")
                 
                 def update_commodities(start_date_option, end_date_option, commodities):
                     start_date = convert_date_option(start_date_option)
                     end_date = convert_date_option(end_date_option)
                     
+                    print(f"Updating commodities from {start_date} to {end_date} for {commodities}")
+                    
+                    # Get data for comparison chart
                     commodity_data = get_commodity_data(commodities, start_date, end_date)
-                    return plot_commodities(commodity_data)
+                    comparison_chart = plot_commodities(commodity_data)
+                    
+                    # Get detailed data including volume
+                    detailed_data = get_commodity_data_with_volume(commodities, start_date, end_date)
+                    
+                    # Create detailed charts for each commodity
+                    oil_chart = plot_commodity_detail("Oil", detailed_data.get("Oil")) if "Oil" in detailed_data else plot_commodity_detail("Oil", None)
+                    gold_chart = plot_commodity_detail("Gold", detailed_data.get("Gold")) if "Gold" in detailed_data else plot_commodity_detail("Gold", None)
+                    silver_chart = plot_commodity_detail("Silver", detailed_data.get("Silver")) if "Silver" in detailed_data else plot_commodity_detail("Silver", None)
+                    btc_chart = plot_commodity_detail("BTC", detailed_data.get("BTC")) if "BTC" in detailed_data else plot_commodity_detail("BTC", None)
+                    eth_chart = plot_commodity_detail("ETH", detailed_data.get("ETH")) if "ETH" in detailed_data else plot_commodity_detail("ETH", None)
+                    
+                    return [comparison_chart, oil_chart, gold_chart, silver_chart, btc_chart, eth_chart]
                 
                 commodity_update_btn.click(
                     fn=update_commodities,
                     inputs=[commodity_start_date, commodity_end_date, commodity_selection],
-                    outputs=commodity_plot
+                    outputs=[commodity_plot, oil_detail_plot, gold_detail_plot, silver_detail_plot, btc_detail_plot, eth_detail_plot]
                 )
             
             # CPI Tab
@@ -975,7 +848,7 @@ def create_dashboard():
         dashboard.load(
             fn=update_commodities,
             inputs=[commodity_start_date, commodity_end_date, commodity_selection],
-            outputs=commodity_plot
+            outputs=[commodity_plot, oil_detail_plot, gold_detail_plot, silver_detail_plot, btc_detail_plot, eth_detail_plot]
         )
         
         dashboard.load(
