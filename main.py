@@ -4,11 +4,13 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import warnings
 import dotenv
-from data import get_interest_rates, get_gdp_data, get_inflation_data, get_cpi_data, get_commodity_data, get_commodity_data_with_volume
+from data import get_interest_rates, get_gdp_data, get_inflation_data, get_cpi_data, get_commodity_data, get_commodity_data_with_volume, get_trading_advice
 warnings.filterwarnings('ignore')
 import pandas as pd
 import yfinance as yf
 from plotly.subplots import make_subplots
+from openai import OpenAI
+import os
 
 dotenv.load_dotenv()
 
@@ -895,7 +897,6 @@ def create_dashboard():
                     outputs=[commodity_plot, oil_detail_plot, gold_detail_plot, silver_detail_plot, btc_detail_plot, eth_detail_plot]
                 )
             
-            # CPI Tab
             with gr.TabItem("CPI Comparison"):
                 with gr.Row():
                     cpi_country_selection = gr.CheckboxGroup(
@@ -936,6 +937,57 @@ def create_dashboard():
                     inputs=[cpi_country_selection, cpi_start_date, cpi_end_date],
                     outputs=cpi_plot
                 )
+                
+            # Trading Consultant Tab
+            with gr.TabItem("Trading Consultant"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        data_sources = gr.CheckboxGroup(
+                            label="Select Data Sources to Consider",
+                            choices=[
+                                "Interest Rates", 
+                                "GDP Trends", 
+                                "Inflation Rates", 
+                                "Commodity Prices", 
+                                "Consumer Price Index"
+                            ],
+                            value=["Interest Rates", "Inflation Rates", "Commodity Prices"]
+                        )
+                
+                with gr.Row():
+                    user_query = gr.Textbox(
+                        label="Ask about trading strategies or market insights",
+                        placeholder="Example: What trading strategy would you recommend given the current interest rate trends?",
+                        lines=3
+                    )
+                
+                with gr.Row():
+                    submit_btn = gr.Button("Get Trading Advice")
+                
+                with gr.Row():
+                    advice_output = gr.Markdown(
+                        label="Trading Advice",
+                        value="*Submit a query to get personalized trading advice based on financial data.*"
+                    )
+                
+                # Add some example queries for users to click
+                with gr.Row():
+                    gr.Examples(
+                        examples=[
+                            "What trading strategy would you recommend given the current interest rate trends?",
+                            "How should I adjust my portfolio considering the inflation data for the US and China?",
+                            "What commodities would be good hedges against current market conditions?",
+                            "How might the GDP trends affect currency trading in the next quarter?",
+                            "What's a good risk management approach for trading in the current economic climate?"
+                        ],
+                        inputs=user_query
+                    )
+                
+                submit_btn.click(
+                    fn=get_trading_advice,
+                    inputs=[user_query, data_sources],
+                    outputs=advice_output
+                )
         
         # Load initial data for each tab when dashboard starts
         dashboard.load(
@@ -961,11 +1013,16 @@ def create_dashboard():
             inputs=[commodity_start_date, commodity_end_date, commodity_selection],
             outputs=[commodity_plot, oil_detail_plot, gold_detail_plot, silver_detail_plot, btc_detail_plot, eth_detail_plot]
         )
-        
         dashboard.load(
             fn=update_cpi_comparison,
             inputs=[cpi_country_selection, cpi_start_date, cpi_end_date],
             outputs=cpi_plot
+        )
+    
+        dashboard.load(
+            fn=get_trading_advice,
+            inputs=[user_query, data_sources],
+            outputs=advice_output
         )
     
     return dashboard

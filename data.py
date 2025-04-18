@@ -4,6 +4,7 @@ import warnings
 from fredapi import Fred
 import os
 import dotenv
+from openai import OpenAI
 
 warnings.filterwarnings('ignore')
 import pandas as pd
@@ -354,3 +355,44 @@ def get_cpi_data(countries, start_date, end_date):
             print(f"Error retrieving CPI data for {country}: {e}")
     
     return cpi_data
+
+# Add this function after the other plotting functions
+def get_trading_advice(user_query, selected_data_sources):
+    """
+    Get AI-powered trading advice based on user query and selected data sources
+    
+    Parameters:
+    user_query (str): The user's question or request
+    selected_data_sources (list): List of data sources to consider
+    
+    Returns:
+    str: AI-generated trading advice
+    """
+    try:
+        # Initialize OpenAI client
+        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        
+        # Construct the prompt with context about available data
+        data_context = "Based on the following financial data sources:\n"
+        for source in selected_data_sources:
+            data_context += f"- {source}\n"
+        
+        prompt = f"{data_context}\n\nUser query: {user_query}\n\nProvide trading strategy advice, considering international finance factors, market trends, and risk management. Include specific actionable recommendations when appropriate."
+        
+        # Call the OpenAI API
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",  # Use an appropriate model
+            messages=[
+                {"role": "system", "content": "You are an expert international finance and trading consultant. Provide clear, concise, and actionable advice based on financial data and market trends. Always consider risk management and diversification in your recommendations."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=800,
+            temperature=0.7
+        )
+        
+        # Extract and return the response text
+        return response.choices[0].message.content
+    
+    except Exception as e:
+        print(f"Error getting trading advice: {e}")
+        return f"Sorry, I couldn't generate trading advice at this time. Error: {str(e)}"
