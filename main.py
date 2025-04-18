@@ -599,8 +599,10 @@ def plot_commodity_detail(commodity_name, commodity_df):
 
 # Main Gradio interface
 def create_dashboard():
-    with gr.Blocks(theme='dark') as dashboard:
-
+    with gr.Blocks(theme='dark', css="./public/style.css") as dashboard:
+        # First, let's create a file handler for the image
+        image_file = gr.File(value="./public/home_icon.png", visible=False)
+        
         # Add the updated header styling
         gr.HTML("""
         <style>
@@ -745,7 +747,7 @@ def create_dashboard():
                     gr.HTML(f"""
                     <div id="dashboard-logo-container">
                         {SVG_LOGO}
-                        <h2 id="dashboard-title">International Finance</h2>
+                        <h2 id="dashboard-title">Macro Thread Analytics</h2>
                     </div>
                     """)
             
@@ -760,11 +762,8 @@ def create_dashboard():
                 with gr.Row():
                     with gr.Column():
                         gr.HTML(f"""
-                        <div class="center-logo">
-                            {SVG_LOGO}
-                        </div>
-                        <h1 class="home-header">International Finance Dashboard</h1>
-                        <p class="home-subheader">Comprehensive financial data visualization and analysis platform</p>
+                        <h1 class="home-header">Macro Thread Analytics</h1>
+                        <p class="home-subheader">A comprehensive financial data visualization & analysis platform</p>
                         """)
                 
                 with gr.Row():
@@ -806,15 +805,15 @@ def create_dashboard():
                         gr.HTML("""
                         <div class="feature-card">
                             <h3>CPI Comparison</h3>
-                            <p>Compare Consumer Price Index data across countries to gauge inflation and cost of living changes over time.</p>
+                            <p>Compare Consumer Price Index data across countries to gauge how inflation impacts the countries of interest and the impact on the cost of living for its citizens.</p>
                         </div>
                         """)
                     
                     with gr.Column():
                         gr.HTML("""
                         <div class="feature-card">
-                            <h3>Trading Consultant</h3>
-                            <p>Get AI-powered trading advice based on your specific queries and selected data sources. Receive personalized strategies and insights.</p>
+                            <h3>Financial Advisor</h3>
+                            <p>Get AI-powered financial advice based on your specific queries and selected data sources. Receive personalized strategies and insights.</p>
                         </div>
                         """)
                 
@@ -982,20 +981,20 @@ def create_dashboard():
                 commodity_plot = gr.Plot(label="Commodity Price Comparison")
                 
                 # Create a tabbed interface for detailed charts
-                with gr.Tabs(elem_id="commodity_detail_tabs") as commodity_detail_tabs:
-                    with gr.Tab("Oil") as oil_tab:
+                with gr.Tabs(elem_id="commodity_detail_tabs"):
+                    with gr.Tab("Oil"):
                         oil_detail_plot = gr.Plot(label="Oil Detail")
                     
-                    with gr.Tab("Gold") as gold_tab:
+                    with gr.Tab("Gold"):
                         gold_detail_plot = gr.Plot(label="Gold Detail")
                     
-                    with gr.Tab("Silver") as silver_tab:
+                    with gr.Tab("Silver"):
                         silver_detail_plot = gr.Plot(label="Silver Detail")
                     
-                    with gr.Tab("BTC") as btc_tab:
+                    with gr.Tab("BTC"):
                         btc_detail_plot = gr.Plot(label="Bitcoin Detail")
                     
-                    with gr.Tab("ETH") as eth_tab:
+                    with gr.Tab("ETH"):
                         eth_detail_plot = gr.Plot(label="Ethereum Detail")
                 
                 def update_commodities(start_date_option, end_date_option, commodities):
@@ -1067,8 +1066,8 @@ def create_dashboard():
                     outputs=cpi_plot
                 )
                 
-            # Trading Consultant Tab
-            with gr.TabItem("Trading Consultant"):
+            # Financial Advisor Tab
+            with gr.TabItem("Financial Advisor"):
                 with gr.Row():
                     with gr.Column(scale=1):
                         data_sources = gr.CheckboxGroup(
@@ -1085,25 +1084,25 @@ def create_dashboard():
                 
                 with gr.Row():
                     user_query = gr.Textbox(
-                        label="Ask about trading strategies or market insights",
+                        label="Ask about financial strategies or market insights",
                         placeholder="Example: What trading strategy would you recommend given the current interest rate trends?",
                         lines=3
                     )
                 
                 with gr.Row():
-                    submit_btn = gr.Button("Get Trading Advice")
+                    submit_btn = gr.Button("Get Financial Advice")
                 
                 with gr.Row():
                     advice_output = gr.Markdown(
-                        label="Trading Advice",
-                        value="*Submit a query to get personalized trading advice based on financial data.*"
+                        label="Financial Advice",
+                        value="*Submit a query to get personalized financial advice based on financial data.*"
                     )
                 
                 # Add some example queries for users to click
                 with gr.Row():
                     gr.Examples(
                         examples=[
-                            "What trading strategy would you recommend given the current interest rate trends?",
+                            "What financial strategy would you recommend given the current interest rate trends?",
                             "How should I adjust my portfolio considering the inflation data for the US and China?",
                             "What commodities would be good hedges against current market conditions?",
                             "How might the GDP trends affect currency trading in the next quarter?",

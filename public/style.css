@@ -1,0 +1,9 @@
+.home-logo-image {
+    background-image: url('./home_icon.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    height: 120px;
+    width: 100%;
+    margin-bottom: 20px;
+} 
