@@ -674,6 +674,66 @@ def create_dashboard():
             label, p {
                 color: white !important;
             }
+            
+            /* Home page specific styles */
+            .feature-card {
+                background-color: #111;
+                border-radius: 8px;
+                padding: 20px;
+                margin-bottom: 15px;
+                border: 1px solid #333;
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+            
+            .feature-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            }
+            
+            .feature-card h3 {
+                margin-top: 0;
+                color: #fff;
+                font-size: 1.2rem;
+                margin-bottom: 10px;
+            }
+            
+            .feature-card p {
+                margin-bottom: 0;
+                color: #ccc;
+            }
+            
+            .home-icon {
+                font-size: 24px;
+                margin-right: 10px;
+                color: #4a8fff;
+            }
+            
+            .home-header {
+                font-size: 1.8rem;
+                margin-bottom: 20px;
+                color: white;
+                text-align: center;
+            }
+            
+            .home-subheader {
+                font-size: 1.2rem;
+                margin-bottom: 30px;
+                color: #ccc;
+                text-align: center;
+            }
+            
+            .center-logo {
+                display: flex;
+                justify-content: center;
+                margin-bottom: 20px;
+            }
+            
+            .home-footer {
+                margin-top: 30px;
+                text-align: center;
+                color: #666;
+                font-size: 0.9rem;
+            }
         </style>
         """)
 
@@ -695,6 +755,78 @@ def create_dashboard():
 
         # Create tabs for different visualizations
         with gr.Tabs() as tabs:
+            # Home Tab (New)
+            with gr.TabItem("Home"):
+                with gr.Row():
+                    with gr.Column():
+                        gr.HTML(f"""
+                        <div class="center-logo">
+                            {SVG_LOGO}
+                        </div>
+                        <h1 class="home-header">International Finance Dashboard</h1>
+                        <p class="home-subheader">Comprehensive financial data visualization and analysis platform</p>
+                        """)
+                
+                with gr.Row():
+                    with gr.Column():
+                        gr.HTML("""
+                        <div class="feature-card">
+                            <h3>Interest Rates</h3>
+                            <p>Track and compare interest rates across major global currencies. Analyze trends and patterns to inform your investment decisions.</p>
+                        </div>
+                        """)
+                    
+                    with gr.Column():
+                        gr.HTML("""
+                        <div class="feature-card">
+                            <h3>GDP Comparison</h3>
+                            <p>Compare Gross Domestic Product trends across countries over time. Identify economic growth patterns and potential investment opportunities.</p>
+                        </div>
+                        """)
+                
+                with gr.Row():
+                    with gr.Column():
+                        gr.HTML("""
+                        <div class="feature-card">
+                            <h3>Inflation Comparison</h3>
+                            <p>Monitor inflation rates across different economies. Understand how inflation impacts currencies and investment strategies.</p>
+                        </div>
+                        """)
+                    
+                    with gr.Column():
+                        gr.HTML("""
+                        <div class="feature-card">
+                            <h3>Commodities</h3>
+                            <p>Track commodity prices including oil, gold, silver, and cryptocurrencies. Analyze price movements and trading volumes.</p>
+                        </div>
+                        """)
+                
+                with gr.Row():
+                    with gr.Column():
+                        gr.HTML("""
+                        <div class="feature-card">
+                            <h3>CPI Comparison</h3>
+                            <p>Compare Consumer Price Index data across countries to gauge inflation and cost of living changes over time.</p>
+                        </div>
+                        """)
+                    
+                    with gr.Column():
+                        gr.HTML("""
+                        <div class="feature-card">
+                            <h3>Trading Consultant</h3>
+                            <p>Get AI-powered trading advice based on your specific queries and selected data sources. Receive personalized strategies and insights.</p>
+                        </div>
+                        """)
+                
+                with gr.Row():
+                    with gr.Column():
+                        gr.HTML("""
+                        <div class="home-footer">
+                            <p>Select any tab above to explore detailed financial data and analysis tools.</p>
+                            <p>Data sources include FRED, Yahoo Finance, and World Bank.</p>
+                        </div>
+                        """)
+            
             # Interest Rates Tab
             with gr.TabItem("Interest Rates"):
                 with gr.Row():
@@ -724,12 +856,9 @@ def create_dashboard():
                 
                 interest_plot = gr.Plot(label="Interest Rates")
                 
-                interest_update_btn.click(
-                    fn=update_interest_rates,
-                    inputs=[interest_start_date, interest_end_date, interest_currency_selection],
-                    outputs=interest_plot
-                )
-            
+                # Remove the initial load for this tab
+                # Instead, add a load event when the tab is selected
+                
             # GDP Comparison Tab
             with gr.TabItem("GDP Comparison"):
                 with gr.Row():
@@ -989,40 +1118,35 @@ def create_dashboard():
                     outputs=advice_output
                 )
         
-        # Load initial data for each tab when dashboard starts
-        dashboard.load(
+        # Replace the tab selection event handlers with this simpler version
+        tabs.select(
             fn=update_interest_rates,
             inputs=[interest_start_date, interest_end_date, interest_currency_selection],
-            outputs=interest_plot
-        )
-        
-        dashboard.load(
-            fn=update_gdp_comparison,
-            inputs=[gdp_country_selection, start_year_slider, end_year_slider],
-            outputs=gdp_plot
+            outputs=interest_plot,
         )
 
-        dashboard.load(
+        tabs.select(
+            fn=update_gdp_comparison,
+            inputs=[gdp_country_selection, start_year_slider, end_year_slider],
+            outputs=gdp_plot,
+        )
+
+        tabs.select(
             fn=update_inflation_comparison,
             inputs=[inflation_country_selection, start_year_slider, end_year_slider],
-            outputs=inflation_plot
+            outputs=inflation_plot,
         )
-        
-        dashboard.load(
+
+        tabs.select(
             fn=update_commodities,
             inputs=[commodity_start_date, commodity_end_date, commodity_selection],
-            outputs=[commodity_plot, oil_detail_plot, gold_detail_plot, silver_detail_plot, btc_detail_plot, eth_detail_plot]
+            outputs=[commodity_plot, oil_detail_plot, gold_detail_plot, silver_detail_plot, btc_detail_plot, eth_detail_plot],
         )
-        dashboard.load(
+
+        tabs.select(
             fn=update_cpi_comparison,
             inputs=[cpi_country_selection, cpi_start_date, cpi_end_date],
-            outputs=cpi_plot
-        )
-    
-        dashboard.load(
-            fn=get_trading_advice,
-            inputs=[user_query, data_sources],
-            outputs=advice_output
+            outputs=cpi_plot,
         )
     
     return dashboard
